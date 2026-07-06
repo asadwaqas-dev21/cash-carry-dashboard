@@ -167,7 +167,7 @@ export default async function DashboardOverview() {
             </div>
           </div>
           <div className="flex items-baseline gap-1 mb-3">
-            <span className="text-2xs text-ink-400 num">AED</span>
+            <span className="text-2xs text-ink-400 num">Rs</span>
             <span className="text-3xl font-semibold tracking-tight3 num tabular">{formatNumber(revenueToday > 0 ? revenueToday : 84271)}</span>
           </div>
           <div className="h-1 bg-borderMuted rounded-full overflow-hidden flex gap-px">
@@ -375,7 +375,7 @@ export default async function DashboardOverview() {
               <div>
                 <div className="text-2xs text-ink-400 uppercase tracking-wider mb-1">Session revenue</div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xs text-ink-400 num">AED</span>
+                  <span className="text-2xs text-ink-400 num">Rs</span>
                   <span className="text-xl font-semibold tracking-tight2 num tabular">{formatNumber(revenueToday > 0 ? posRevenue : 52248)}</span>
                 </div>
               </div>
@@ -386,14 +386,14 @@ export default async function DashboardOverview() {
               <div>
                 <div className="text-2xs text-ink-400 uppercase tracking-wider mb-1">Avg ticket</div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xs text-ink-400 num">AED</span>
+                  <span className="text-2xs text-ink-400 num">Rs</span>
                   <span className="text-base font-medium num tabular">{formatNumber(revenueToday > 0 ? avgTicket : 715.72, 2)}</span>
                 </div>
               </div>
               <div>
                 <div className="text-2xs text-ink-400 uppercase tracking-wider mb-1">Cash on hand</div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xs text-ink-400 num">AED</span>
+                  <span className="text-2xs text-ink-400 num">Rs</span>
                   <span className="text-base font-medium num tabular">{formatNumber(revenueToday > 0 ? cashPayments : 18940)}</span>
                 </div>
               </div>

@@ -113,18 +113,43 @@ export default function POSClient({ products }: { products: Product[] }) {
     }
   };
 
+  const handlePrintQuote = () => {
+    if (cart.length === 0) {
+      alert('Cart is empty');
+      return;
+    }
+
+    setCompletedOrder({
+      orderNumber: 'QUOTE-' + Math.floor(1000 + Math.random() * 9000),
+      items: cart.map((c) => ({
+        id: c.product.id,
+        name: c.product.name,
+        price: c.product.retail_price,
+        quantity: c.quantity,
+      })),
+      total: total,
+      paymentMethod: 'quote',
+      date: new Date().toLocaleString(),
+    });
+
+    setTimeout(() => {
+      window.print();
+      setCompletedOrder(null);
+    }, 300);
+  };
+
   return (
     <>
       <div className="flex h-full w-full bg-[#F5F3EE] print:hidden">
 
         {/* Left: Product Grid */}
         <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-          
+
           {/* Header with Search */}
           <div className="px-6 pt-5 pb-3 bg-white border-b border-border z-10 flex flex-col gap-4 shadow-[0_1px_8px_rgba(0,0,0,0.02)]">
             <div className="flex items-center gap-4">
               <div className="flex-1 flex items-center border border-border rounded-lg bg-white h-12 px-4 shadow-sm relative focus-within:border-ink-900 transition">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ink-400 shrink-0"><path d="M4 4h4v16H4zM16 4h4v16h-4zM10 4h1v16h-1zM13 4h1v16h-1z"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ink-400 shrink-0"><path d="M4 4h4v16H4zM16 4h4v16h-4zM10 4h1v16h-1zM13 4h1v16h-1z" /></svg>
                 <input
                   type="text"
                   placeholder="Scan barcode or search SKU/name..."
@@ -167,36 +192,39 @@ export default function POSClient({ products }: { products: Product[] }) {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 pb-[100px]">
+          <div className="flex-1 overflow-y-auto p-6">
             {filteredProducts.length === 0 ? (
               <div className="bg-white border border-border rounded-xl p-8 text-center text-ink-500 shadow-sm">
                 {searchQuery ? 'No products found matching your search.' : 'No active products found in Supabase.'}
               </div>
             ) : (
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4">
                 {filteredProducts.map((product) => (
                   <button
                     key={product.id}
                     onClick={() => addToCart(product)}
                     className="bg-white border border-border rounded-2xl p-3 flex flex-col text-left hover:border-ink-400 hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] transition-all group overflow-hidden active:scale-95"
                   >
-                    <div className="w-full aspect-[4/3] bg-canvas rounded-xl mb-3 flex items-center justify-center relative overflow-hidden">
-                       <svg className="text-ink-200" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <div className="w-full aspect-square bg-canvas rounded-xl mb-3 flex items-center justify-center relative overflow-hidden">
+                      <svg className="text-ink-200" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
                     </div>
                     <div className="text-[10px] text-ink-400 mb-1 tracking-wider uppercase font-medium">SKU-{product.id.substring(0, 4)}</div>
                     <div className="text-[13px] font-semibold text-ink-900 leading-tight mb-0.5 line-clamp-1">{product.name}</div>
                     <div className="text-[11px] text-ink-500 line-clamp-1 mb-3">{product.categories?.name || 'Uncategorized'} · Premium</div>
-                    
-                    <div className="mt-auto flex items-end justify-between w-full pt-1">
-                      <div className="text-[14px] font-bold num tabular text-ink-900 tracking-tight">{formatMoney(product.retail_price).replace('Rs', 'AED')}</div>
-                      {/* Mock stock indicator logic */}
-                      {product.id.charCodeAt(0) % 3 === 0 ? (
-                        <div className="text-[10px] font-bold text-[#EA580C] uppercase tracking-wider">left</div>
-                      ) : product.id.charCodeAt(0) % 5 === 0 ? (
-                        <div className="text-[10px] font-bold text-[#DC2626] uppercase tracking-wider">Out</div>
-                      ) : (
-                        <div></div>
-                      )}
+
+                    <div className="mt-auto flex flex-col w-full pt-1">
+                      <div className="text-[11px] font-bold text-ink-900 mb-0.5">Rs</div>
+                      <div className="flex items-center justify-between w-full gap-1">
+                        <div className="text-[14px] font-bold num tabular text-ink-900 tracking-tight truncate">
+                          {product.retail_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        {/* Mock stock indicator logic */}
+                        {product.id.charCodeAt(0) % 3 === 0 ? (
+                          <div className="text-[9px] font-bold text-[#EA580C] uppercase tracking-wider shrink-0">left</div>
+                        ) : product.id.charCodeAt(0) % 5 === 0 ? (
+                          <div className="text-[9px] font-bold text-[#DC2626] uppercase tracking-wider shrink-0">Out</div>
+                        ) : null}
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -204,47 +232,11 @@ export default function POSClient({ products }: { products: Product[] }) {
             )}
           </div>
 
-          {/* Bottom Action Bar */}
-          <div className="absolute bottom-0 left-0 right-0 h-16 bg-white border-t border-border px-6 flex items-center justify-between z-20 shadow-[0_-4px_24px_rgba(0,0,0,0.02)]">
-            <div className="flex gap-3">
-              <button className="h-9 px-4 rounded-lg border border-border hover:bg-canvas text-[13px] font-semibold flex items-center gap-2.5 text-ink-700 shadow-sm transition">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Custom item
-              </button>
-              <button className="h-9 px-4 rounded-lg border border-border hover:bg-canvas text-[13px] font-semibold flex items-center gap-2.5 text-ink-700 shadow-sm transition">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                Weight item
-              </button>
-              <button className="h-9 px-4 rounded-lg border border-border hover:bg-canvas text-[13px] font-semibold flex items-center gap-2.5 text-ink-700 shadow-sm transition">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                Cash-out
-              </button>
-            </div>
-            <button className="h-9 px-4 rounded-lg border border-border hover:bg-canvas text-[13px] font-semibold flex items-center gap-2.5 text-ink-700 shadow-sm transition">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-              Refresh catalog
-            </button>
-          </div>
         </div>
 
         {/* Right: Shopping Cart */}
         <div className="w-[380px] shrink-0 bg-white border-l border-border flex flex-col z-30 shadow-[-8px_0_24px_rgba(0,0,0,0.02)] relative">
-          <div className="px-5 py-4 pb-0">
-            <div className="flex justify-between items-center mb-3">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-ink-400">CURRENT BILL</div>
-              <div className="text-[11px] font-mono text-ink-500 tabular num tracking-tight">R-4831 · 14:24</div>
-            </div>
-            <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-canvas/40 mb-1 group hover:border-ink-300 transition cursor-pointer">
-              <div className="w-[38px] h-[38px] rounded-full bg-[#EA580C]/10 text-[#EA580C] flex items-center justify-center text-xs font-bold tracking-tight2 shrink-0">AN</div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-bold text-ink-900 truncate leading-tight mb-0.5">Al Noor Grocery</div>
-                <div className="text-[11px] text-ink-500 truncate font-medium">Business · CR-1204</div>
-              </div>
-              <button className="w-8 h-8 rounded-lg bg-white border border-border flex items-center justify-center text-ink-500 group-hover:text-ink-900 shadow-sm transition shrink-0">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              </button>
-            </div>
-          </div>
+
 
           <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1 mt-2">
             {cart.length === 0 ? (
@@ -260,7 +252,7 @@ export default function POSClient({ products }: { products: Product[] }) {
                   <div className="flex-1 min-w-0 pr-2">
                     <div className="font-semibold text-[13px] text-ink-900 mb-0.5 leading-snug line-clamp-1">{item.product.name}</div>
                     <div className="text-ink-400 text-[11px] mb-1">SKU-{item.product.id.substring(0, 4)}</div>
-                    <div className="text-ink-900 font-bold text-[13px] num tabular tracking-tight">{formatMoney(item.product.retail_price).replace('Rs', 'AED')}</div>
+                    <div className="text-ink-900 font-bold text-[13px] num tabular tracking-tight">{formatMoney(item.product.retail_price)}</div>
                   </div>
                   <div className="flex flex-col items-end justify-between shrink-0">
                     <button onClick={() => removeFromCart(item.product.id)} className="text-ink-300 hover:text-bad p-1 -mr-1 opacity-0 group-hover:opacity-100 transition">
@@ -283,10 +275,10 @@ export default function POSClient({ products }: { products: Product[] }) {
 
           {/* Totals Block */}
           <div className="px-5 pt-4 pb-0 border-t border-border relative">
-             <div className="absolute top-0 left-5 right-5 h-px bg-white/50 -translate-y-[2px]"></div>
-             <div className="space-y-2.5 mb-6">
+            <div className="absolute top-0 left-5 right-5 h-px bg-white/50 -translate-y-[2px]"></div>
+            <div className="space-y-2.5 mb-6">
               <div className="flex justify-between items-center text-xs text-ink-500 font-medium">
-                <span>Subtotal · {cart.reduce((s,i) => s + i.quantity, 0)} items</span>
+                <span>Subtotal · {cart.reduce((s, i) => s + i.quantity, 0)} items</span>
                 <span className="num tabular font-bold text-ink-900 tracking-tight">{formatMoney(total).replace('Rs ', '')}</span>
               </div>
               <div className="flex justify-between items-center text-xs">
@@ -300,7 +292,7 @@ export default function POSClient({ products }: { products: Product[] }) {
             </div>
 
             <div className="flex justify-between items-end mb-5">
-              <div className="text-[10px] text-ink-500 font-bold uppercase tracking-wider mb-2">AED · incl. VAT</div>
+              <div className="text-[10px] text-ink-500 font-bold uppercase tracking-wider mb-2">Rs · incl. VAT</div>
               <div className="text-[48px] leading-[0.8] font-bold tabular num tracking-tight3 text-ink-900">
                 {formatMoney(total * 1.05).replace('Rs ', '')}
               </div>
@@ -316,10 +308,10 @@ export default function POSClient({ products }: { products: Product[] }) {
                 className="h-[56px] bg-ink-900 hover:bg-ink-800 text-white rounded-[14px] flex flex-col items-center justify-center relative transition disabled:opacity-50 disabled:cursor-not-allowed group"
               >
                 <div className="flex items-center gap-2 text-[15px] font-semibold mb-0.5 group-active:scale-95 transition-transform">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M12 12h.01" /></svg>
                   Pay Cash
                 </div>
-                <div className="text-[9px] font-mono text-white/50 bg-white/10 px-1.5 py-0.5 rounded leading-none">F4</div>
+
               </button>
               <button
                 disabled={cart.length === 0}
@@ -327,28 +319,32 @@ export default function POSClient({ products }: { products: Product[] }) {
                 className="h-[56px] bg-[#EA580C] hover:bg-[#C2410C] text-white rounded-[14px] flex flex-col items-center justify-center relative transition disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_4px_14px_rgba(234,88,12,0.25)] group"
               >
                 <div className="flex items-center gap-2 text-[15px] font-semibold mb-0.5 group-active:scale-95 transition-transform">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
                   Pay Card
                 </div>
-                <div className="text-[9px] font-mono text-white/50 bg-white/20 px-1.5 py-0.5 rounded leading-none">F5</div>
+
               </button>
             </div>
 
             <div className="grid grid-cols-3 gap-2 mt-1">
               <button className="h-12 bg-white border border-border rounded-xl text-xs font-semibold text-ink-700 flex items-center justify-center gap-1.5 hover:bg-canvas transition shadow-sm active:scale-95">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="4" y="4" width="16" height="16" rx="2" ry="2" /><rect x="9" y="9" width="6" height="6" /></svg>
                 Hold
               </button>
-              <button className="h-12 bg-white border border-border rounded-xl text-xs font-semibold text-ink-700 flex items-center justify-center gap-1.5 hover:bg-canvas transition shadow-sm active:scale-95">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              <button
+                onClick={handlePrintQuote}
+                disabled={cart.length === 0}
+                className="h-12 bg-white border border-border rounded-xl text-xs font-semibold text-ink-700 flex items-center justify-center gap-1.5 hover:bg-canvas transition shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
                 Print quote
               </button>
-              <button 
-                onClick={() => setCart([])} 
+              <button
+                onClick={() => setCart([])}
                 disabled={cart.length === 0}
                 className="h-12 bg-white border border-border rounded-xl text-xs font-semibold text-[#DC2626] flex items-center justify-center gap-1.5 hover:bg-badSoft transition shadow-sm disabled:opacity-50 active:scale-95"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>
                 Cancel
               </button>
             </div>
@@ -370,7 +366,7 @@ export default function POSClient({ products }: { products: Product[] }) {
             <div className="p-6">
               <div className="text-center mb-8">
                 <div className="text-sm text-ink-500 font-medium mb-1">Amount Due (incl. VAT)</div>
-                <div className="text-4xl font-bold text-brand tabular num tracking-tight2">{formatMoney(total * 1.05).replace('Rs', 'AED')}</div>
+                <div className="text-4xl font-bold text-brand tabular num tracking-tight2">{formatMoney(total * 1.05)}</div>
               </div>
 
               <div className="space-y-4">
@@ -394,7 +390,7 @@ export default function POSClient({ products }: { products: Product[] }) {
 
                 {paymentMethod === 'cash' && (
                   <div className="animate-in fade-in slide-in-from-top-2">
-                    <label className="text-sm font-medium text-ink-700 block mb-2" htmlFor="cash">Cash Received (AED)</label>
+                    <label className="text-sm font-medium text-ink-700 block mb-2" htmlFor="cash">Cash Received (Rs)</label>
                     <input
                       type="number"
                       id="cash"
@@ -406,7 +402,7 @@ export default function POSClient({ products }: { products: Product[] }) {
                     {Number(cashReceived) >= (total * 1.05) && (
                       <div className="mt-3 flex justify-between items-center p-3 bg-goodSoft border border-good/20 rounded-lg text-good">
                         <span className="text-sm font-medium">Change to return:</span>
-                        <span className="font-bold text-lg num tabular">AED {(Number(cashReceived) - (total * 1.05)).toFixed(2)}</span>
+                        <span className="font-bold text-lg num tabular">Rs {(Number(cashReceived) - (total * 1.05)).toFixed(2)}</span>
                       </div>
                     )}
                   </div>
@@ -435,11 +431,11 @@ export default function POSClient({ products }: { products: Product[] }) {
 
       {/* Receipt Modal Overlay (Visible when printing) */}
       {completedOrder && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4 print:bg-white print:p-0 print:block">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-[400px] flex flex-col overflow-hidden print:shadow-none print:w-full print:max-w-none">
+        <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 print:bg-white print:p-0 print:flex print:items-start print:justify-center ${completedOrder.paymentMethod === 'quote' ? 'opacity-0 pointer-events-none print:opacity-100' : 'bg-ink-900/60 backdrop-blur-sm'}`}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-[400px] flex flex-col overflow-hidden print:shadow-none print:max-w-[320px] print:w-full print:mx-auto">
             <div className="p-8 pb-4 print:p-4 text-ink-900" id="receipt-content">
               <div className="text-center mb-6">
-                <h2 className="text-2xl font-bold tracking-tight2 mb-1">AL NOOR GROCERY</h2>
+
                 <div className="text-sm text-ink-500">Receipt: {completedOrder.orderNumber}</div>
                 <div className="text-sm text-ink-500">{completedOrder.date}</div>
               </div>
@@ -454,10 +450,10 @@ export default function POSClient({ products }: { products: Product[] }) {
                     <div key={i} className="flex justify-between text-sm">
                       <div className="pr-4">
                         <div className="font-medium text-ink-900">{item.name}</div>
-                        <div className="text-ink-500 text-xs">{item.quantity} x AED {item.price.toFixed(2)}</div>
+                        <div className="text-ink-500 text-xs">{item.quantity} x Rs {item.price.toFixed(2)}</div>
                       </div>
-                      <div className="font-semibold tabular num text-ink-900 shrink-0">
-                        AED {(item.quantity * item.price).toFixed(2)}
+                      <div className="font-medium text-ink-900 tabular num shrink-0">
+                        Rs {(item.quantity * item.price).toFixed(2)}
                       </div>
                     </div>
                   ))}
@@ -467,15 +463,15 @@ export default function POSClient({ products }: { products: Product[] }) {
               <div className="space-y-1.5 mb-6 text-sm">
                 <div className="flex justify-between text-ink-600">
                   <span>Subtotal</span>
-                  <span className="tabular num text-ink-900">AED {completedOrder.total.toFixed(2)}</span>
+                  <span className="tabular num text-ink-900">Rs {completedOrder.total.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-ink-600">
-                  <span>VAT 5%</span>
-                  <span className="tabular num text-ink-900">AED {(completedOrder.total * 0.05).toFixed(2)}</span>
+                <div className="flex justify-between text-sm mb-1 text-ink-500">
+                  <span>VAT (5%)</span>
+                  <span className="tabular num text-ink-900">Rs {(completedOrder.total * 0.05).toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between font-bold text-lg text-ink-900 pt-2 border-t border-border">
+                <div className="flex justify-between text-lg font-bold mt-3 pt-3 border-t border-ink-200 text-ink-900">
                   <span>Total</span>
-                  <span className="tabular num">AED {(completedOrder.total * 1.05).toFixed(2)}</span>
+                  <span className="tabular num">Rs {(completedOrder.total * 1.05).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-ink-600 mt-2">
                   <span>Payment Method</span>
@@ -485,11 +481,11 @@ export default function POSClient({ products }: { products: Product[] }) {
                   <>
                     <div className="flex justify-between text-ink-600">
                       <span>Cash Tendered</span>
-                      <span className="tabular num text-ink-900">AED {Number(completedOrder.cashReceived).toFixed(2)}</span>
+                      <span className="tabular num text-ink-900">Rs {Number(completedOrder.cashReceived).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-ink-600">
+                    <div className="flex justify-between text-sm">
                       <span>Change</span>
-                      <span className="tabular num text-ink-900">AED {Number(completedOrder.cashChange).toFixed(2)}</span>
+                      <span className="tabular num text-ink-900">Rs {Number(completedOrder.cashChange).toFixed(2)}</span>
                     </div>
                   </>
                 )}

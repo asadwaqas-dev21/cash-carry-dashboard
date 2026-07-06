@@ -69,7 +69,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex-1 overflow-y-auto">
             {children}
           </div>
-          <RightSidebar />
+          {pathname !== '/pos' && <RightSidebar />}
         </div>
       </main>
     </div>
