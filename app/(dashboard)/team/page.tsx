@@ -1,8 +1,11 @@
 import { requirePageAccess } from '@/lib/auth';
 import { ROLES, ROLE_LABELS, PAGE_ACCESS, type Role } from '@/lib/roles';
 import { formatDateTime, initials } from '@/lib/format';
-import { changeMemberRole, revokeInvite, setMemberActive } from './actions';
+import { changeMemberRole, revokeInvite, setMemberActive, setMemberPassword } from './actions';
 import InviteForm from './InviteForm';
+import { hasAdminKey } from '@/lib/supabase-admin';
+import FormModal from '@/components/admin/FormModal';
+import { Field, Hidden } from '@/components/admin/fields';
 
 export const revalidate = 0;
 
@@ -59,7 +62,7 @@ export default async function TeamPage() {
         </div>
       </div>
 
-      <InviteForm />
+      <InviteForm enabled={hasAdminKey} />
 
       <div className="bg-panel border border-border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
@@ -109,8 +112,22 @@ export default async function TeamPage() {
                   </td>
                   <td className="py-3 text-xs text-ink-500 num">{formatDateTime(member.last_seen_at)}</td>
                   <td className="px-5 py-3 text-right">
+                    <span className="inline-flex items-center gap-1">
+                    {hasAdminKey && member.email && (
+                      <FormModal
+                        action={setMemberPassword}
+                        title={`Set password · ${member.full_name}`}
+                        description="They sign in with their email and this password."
+                        trigger="Set password"
+                        triggerClassName="h-8 px-3 rounded-md text-xs font-medium text-brand hover:bg-brand-soft"
+                        submitLabel="Set password"
+                      >
+                        <Hidden name="id" value={member.id} />
+                        <Field label="New password" name="password" type="text" required hint="At least 8 characters" />
+                      </FormModal>
+                    )}
                     {isSelf ? (
-                      <span className="text-xs text-ink-400">-</span>
+                      <span className="text-xs text-ink-400 px-3">-</span>
                     ) : (
                       <form action={setMemberActive}>
                         <input type="hidden" name="id" value={member.id} />
@@ -123,6 +140,7 @@ export default async function TeamPage() {
                         </button>
                       </form>
                     )}
+                    </span>
                   </td>
                 </tr>
               );

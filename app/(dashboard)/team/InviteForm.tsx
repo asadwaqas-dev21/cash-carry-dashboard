@@ -1,46 +1,33 @@
-"use client";
+import ActionForm from '@/components/admin/ActionForm';
+import { Field, Row, Select } from '@/components/admin/fields';
+import { ROLES, ROLE_LABELS } from '@/lib/roles';
+import { createMember } from './actions';
 
-import { useActionState, useEffect, useRef } from "react";
-import { inviteMember, type TeamActionState } from "./actions";
-import { ROLES, ROLE_LABELS } from "@/lib/roles";
-
-export default function InviteForm() {
-  const [state, action, pending] = useActionState<TeamActionState, FormData>(inviteMember, null);
-  const formRef = useRef<HTMLFormElement>(null);
-
-  useEffect(() => {
-    if (state?.success) formRef.current?.reset();
-  }, [state]);
-
+/** Owner creates a login directly: no invite or confirmation email is sent. */
+export default function InviteForm({ enabled }: { enabled: boolean }) {
   return (
-    <form ref={formRef} action={action} className="bg-panel border border-border rounded-lg p-4">
-      <div className="text-sm font-semibold mb-1">Invite someone</div>
+    <div className="bg-panel border border-border rounded-lg p-4">
+      <div className="text-sm font-semibold mb-1">Add team member</div>
       <div className="text-xs text-ink-500 mb-3">
-        They can sign in with Google, an email link or a password using this email, and get the role you pick.
+        Creates their login right away. Give them the email and password; they sign in on the login page with “Password”.
       </div>
-      <div className="flex flex-wrap gap-2">
-        <input
-          name="email"
-          type="email"
-          required
-          placeholder="name@company.com"
-          className="flex-1 min-w-[220px] h-9 px-3 bg-white border border-border rounded-md text-sm focus:outline-none focus:border-ink-900"
-        />
-        <select name="role" defaultValue="sales_person" className="h-9 px-2 bg-white border border-border rounded-md text-sm">
-          {ROLES.map((role) => (
-            <option key={role} value={role}>{ROLE_LABELS[role]}</option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          disabled={pending}
-          className="h-9 px-4 rounded-md bg-ink-900 text-white text-sm font-medium hover:bg-ink-700 disabled:opacity-50"
-        >
-          {pending ? "Inviting…" : "Send invite"}
-        </button>
-      </div>
-      {state?.error && <div className="mt-3 text-xs text-bad">{state.error}</div>}
-      {state?.success && <div className="mt-3 text-xs text-good">{state.success}</div>}
-    </form>
+      {enabled ? (
+        <ActionForm action={createMember} submitLabel="Create login" resetOnSuccess>
+          <Row>
+            <Field label="Name" name="full_name" required />
+            <Field label="Email" name="email" type="email" required placeholder="name@company.com" />
+          </Row>
+          <Row>
+            <Field label="Password" name="password" type="text" required hint="At least 8 characters" />
+            <Select label="Role" name="role" options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))} defaultValue="sales_person" />
+          </Row>
+        </ActionForm>
+      ) : (
+        <div className="p-3 text-xs text-warn bg-warnSoft border border-warn/20 rounded-md">
+          To create logins here, add <code className="font-mono">SUPABASE_SERVICE_ROLE_KEY</code> to <code className="font-mono">.env.local</code>{' '}
+          (Supabase → Project Settings → API keys → service_role / secret key) and restart the app.
+        </div>
+      )}
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requireRole } from '@/lib/auth';
 import { attempt, check, checkAffected, nextCode, oneOf, optStr, str, type ActionState } from '@/lib/action-state';
 import { RIDER_STATUSES } from '@/lib/enums';
+import { setPasswordLogin } from '@/lib/supabase-admin';
 
 /** Creates or updates a rider. Setting an email lets them sign in to the rider app. */
 export async function saveRider(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -49,6 +50,29 @@ export async function deleteRider(_prev: ActionState, formData: FormData): Promi
     checkAffected(res);
     revalidatePath('/riders');
     return 'Rider deleted.';
+  });
+}
+
+/** Gives the rider an email + password login for the rider app (no email is sent) and links it. */
+export async function setRiderPassword(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  return attempt(async () => {
+    const { user, supabase } = await requireRole('owner');
+    const id = str(formData, 'id');
+    const { data: rider } = await supabase
+      .from('riders')
+      .select('email, full_name')
+      .eq('id', id)
+      .eq('org_id', user.orgId)
+      .maybeSingle();
+    if (!rider) throw new Error('Rider not found.');
+    if (!rider.email) throw new Error('Edit the rider and add their email first.');
+
+    const authUserId = await setPasswordLogin(rider.email, str(formData, 'password'), rider.full_name);
+    checkAffected(
+      await supabase.from('riders').update({ auth_user_id: authUserId }).eq('id', id).eq('org_id', user.orgId).select('id')
+    );
+    revalidatePath('/riders');
+    return `${rider.full_name} can sign in to the rider app with ${rider.email}.`;
   });
 }
 

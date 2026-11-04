@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Email + password sign-in for riders. New riders create an account with the
-/// email the store saved on their rider profile, confirm it, then sign in.
+/// Email + password sign-in for riders. The store owner creates the login from
+/// the dashboard (Riders → App password), so no sign-up or reset emails are sent.
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
 
@@ -14,11 +14,9 @@ class _SignInScreenState extends State<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
-  bool _creating = false;
   bool _busy = false;
   bool _obscure = true;
   String? _message;
-  bool _messageIsError = false;
 
   @override
   void dispose() {
@@ -34,18 +32,8 @@ class _SignInScreenState extends State<SignInScreen> {
       _message = null;
     });
 
-    final auth = Supabase.instance.client.auth;
-    final email = _email.text.trim();
     try {
-      if (_creating) {
-        final result = await auth.signUp(email: email, password: _password.text);
-        if (result.session == null) {
-          _show('Check $email and tap the confirmation link, then sign in here.', error: false);
-          setState(() => _creating = false);
-        }
-      } else {
-        await auth.signInWithPassword(email: email, password: _password.text);
-      }
+      await Supabase.instance.client.auth.signInWithPassword(email: _email.text.trim(), password: _password.text);
     } on AuthException catch (e) {
       _show(e.message == 'Invalid login credentials' ? 'Wrong email or password.' : e.message);
     } catch (e) {
@@ -55,26 +43,9 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
-  Future<void> _forgotPassword() async {
-    final email = _email.text.trim();
-    if (!email.contains('@')) return _show('Enter your email first.');
-    setState(() => _busy = true);
-    try {
-      await Supabase.instance.client.auth.resetPasswordForEmail(email);
-      _show('If $email has an account, a reset link is on its way.', error: false);
-    } on AuthException catch (e) {
-      _show(e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  void _show(String message, {bool error = true}) {
+  void _show(String message) {
     if (!mounted) return;
-    setState(() {
-      _message = message;
-      _messageIsError = error;
-    });
+    setState(() => _message = message);
   }
 
   @override
@@ -105,14 +76,12 @@ class _SignInScreenState extends State<SignInScreen> {
                     ),
                     const SizedBox(height: 20),
                     Text(
-                      _creating ? 'Create rider account' : 'Rider sign in',
+                      'Rider sign in',
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      _creating
-                          ? 'Use the email the store saved on your rider profile.'
-                          : 'Deliveries, directions and cash — all in one place.',
+                      'Deliveries, directions and cash — all in one place.',
                       style: TextStyle(color: colors.outline),
                     ),
                     const SizedBox(height: 28),
@@ -120,13 +89,10 @@ class _SignInScreenState extends State<SignInScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: _messageIsError ? colors.errorContainer : const Color(0xFFDCFCE7),
+                          color: colors.errorContainer,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Text(
-                          _message!,
-                          style: TextStyle(color: _messageIsError ? colors.onErrorContainer : const Color(0xFF166534)),
-                        ),
+                        child: Text(_message!, style: TextStyle(color: colors.onErrorContainer)),
                       ),
                       const SizedBox(height: 16),
                     ],
@@ -142,7 +108,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     TextFormField(
                       controller: _password,
                       obscureText: _obscure,
-                      autofillHints: [_creating ? AutofillHints.newPassword : AutofillHints.password],
+                      autofillHints: const [AutofillHints.password],
                       onFieldSubmitted: (_) => _submit(),
                       decoration: InputDecoration(
                         labelText: 'Password',
@@ -153,33 +119,21 @@ class _SignInScreenState extends State<SignInScreen> {
                           icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                         ),
                       ),
-                      validator: (v) => (v ?? '').length < (_creating ? 8 : 1)
-                          ? (_creating ? 'Use at least 8 characters' : 'Enter your password')
-                          : null,
+                      validator: (v) => (v ?? '').isEmpty ? 'Enter your password' : null,
                     ),
-                    if (!_creating)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(onPressed: _busy ? null : _forgotPassword, child: const Text('Forgot password?')),
-                      )
-                    else
-                      const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     FilledButton(
                       style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
                       onPressed: _busy ? null : _submit,
                       child: _busy
                           ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                          : Text(_creating ? 'Create account' : 'Sign in', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          : const Text('Sign in', style: TextStyle(fontWeight: FontWeight.w700)),
                     ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => setState(() {
-                                _creating = !_creating;
-                                _message = null;
-                              }),
-                      child: Text(_creating ? 'I already have an account' : 'New rider? Create an account'),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No login yet, or forgot your password? Ask the store owner to set one for you.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: colors.outline, fontSize: 13),
                     ),
                   ],
                 ),

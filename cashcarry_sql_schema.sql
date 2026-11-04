@@ -95,6 +95,7 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+drop trigger if exists tr_profiles_prevent_role_escalation on public.profiles;
 create trigger tr_profiles_prevent_role_escalation
   before update on public.profiles
   for each row execute function app.prevent_role_escalation();

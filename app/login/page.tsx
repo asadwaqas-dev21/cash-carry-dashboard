@@ -15,8 +15,9 @@ function callbackUrl(next = nextPath()) {
   return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 }
 
-type Pending = null | "password" | "google" | "link" | "reset";
-type Method = "password" | "link";
+// Email links and password-reset emails are turned off (Supabase's email limit);
+// the owner creates logins and sets passwords from Team & Access instead.
+type Pending = null | "password" | "google";
 
 const features = [
   { icon: "pos", text: "Counter sales with receipts" },
@@ -60,29 +61,20 @@ export default function LoginPage() {
 function LoginForm() {
   // Errors passed back from /auth/callback, e.g. a cancelled Google sign-in.
   const callbackError = useSearchParams().get("error");
-  const [method, setMethod] = useState<Method>("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(callbackError);
-  const [notice, setNotice] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
   const start = (kind: Pending) => {
     setLoading(kind);
     setError(null);
-    setNotice(null);
   };
 
   const fail = (message?: string) => {
     setError(!message || message === "{}" ? "Something went wrong. Please try again." : message);
     setLoading(null);
-  };
-
-  const requireEmail = () => {
-    if (email.trim()) return true;
-    setError("Enter your work email first.");
-    return false;
   };
 
   const handlePassword = async () => {
@@ -95,22 +87,9 @@ function LoginForm() {
     window.location.href = nextPath();
   };
 
-  const handleMagicLink = async () => {
-    if (!requireEmail()) return;
-    start("link");
-    const { error } = await supabaseBrowser.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: callbackUrl() },
-    });
-    if (error) return fail(error.message);
-    setNotice(`Check ${email} — we sent you a sign-in link. Open it on this device.`);
-    setLoading(null);
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (method === "password") handlePassword();
-    else handleMagicLink();
+    handlePassword();
   };
 
   const handleGoogle = async () => {
@@ -121,17 +100,6 @@ function LoginForm() {
     });
     // On success the browser is already on its way to Google.
     if (error) fail(error.message);
-  };
-
-  const handleForgotPassword = async () => {
-    if (!requireEmail()) return;
-    start("reset");
-    const { error } = await supabaseBrowser.auth.resetPasswordForEmail(email, {
-      redirectTo: callbackUrl("/reset-password"),
-    });
-    if (error) return fail(error.message);
-    setNotice(`If ${email} has an account, a password reset link is on its way.`);
-    setLoading(null);
   };
 
   const busy = loading !== null;
@@ -203,40 +171,14 @@ function LoginForm() {
 
               <div className="my-6 flex items-center gap-3">
                 <div className="flex-1 h-px bg-border" />
-                <span className="text-xs text-ink-400">or use your email</span>
+                <span className="text-xs text-ink-400">or use your email and password</span>
                 <div className="flex-1 h-px bg-border" />
-              </div>
-
-              {/* Method switch */}
-              <div role="tablist" aria-label="Sign-in method" className="relative grid grid-cols-2 p-1 rounded-xl bg-ink-200/40 mb-5">
-                <span
-                  aria-hidden
-                  className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-lg bg-white shadow-sm transition-transform duration-300 ease-out ${method === "link" ? "translate-x-full" : ""}`}
-                />
-                {(["password", "link"] as Method[]).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="tab"
-                    aria-selected={method === m}
-                    onClick={() => { setMethod(m); setError(null); setNotice(null); }}
-                    className={`relative z-10 h-9 text-sm font-medium rounded-lg transition-colors ${method === m ? "text-ink-900" : "text-ink-500 hover:text-ink-700"}`}
-                  >
-                    {m === "password" ? "Password" : "Email link"}
-                  </button>
-                ))}
               </div>
 
               {error && (
                 <div role="alert" className="mb-4 flex gap-2.5 p-3 text-sm text-bad bg-badSoft border border-bad/15 rounded-xl rise">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 mt-px"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
                   {error}
-                </div>
-              )}
-              {notice && (
-                <div role="status" className="mb-4 flex gap-2.5 p-3 text-sm text-good bg-goodSoft border border-good/15 rounded-xl rise">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 mt-px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
-                  {notice}
                 </div>
               )}
 
@@ -260,13 +202,10 @@ function LoginForm() {
                   </div>
                 </div>
 
-                {method === "password" && (
-                  <div className="rise">
+                  <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label htmlFor="password" className="block text-xs font-medium text-ink-700">Password</label>
-                      <button type="button" onClick={handleForgotPassword} disabled={busy} className="text-xs text-brand hover:text-brand-hover font-medium transition disabled:opacity-50">
-                        {loading === "reset" ? "Sending…" : "Forgot password?"}
-                      </button>
+                      <span className="text-2xs text-ink-400">Forgot it? Ask the owner to set a new one.</span>
                     </div>
                     <div className={field}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-ink-400 group-focus-within:text-brand transition-colors shrink-0">
@@ -296,22 +235,17 @@ function LoginForm() {
                       </button>
                     </div>
                   </div>
-                )}
-
-                {method === "link" && (
-                  <p className="text-xs text-ink-500 rise">We&apos;ll email you a one-time link. No password needed.</p>
-                )}
 
                 <button
                   type="submit"
                   disabled={busy}
                   className="group w-full h-12 mt-2 rounded-xl bg-gradient-to-b from-brand to-brand-hover text-white text-md font-semibold shadow-lg shadow-brand/25 flex items-center justify-center gap-2 transition hover:-translate-y-px hover:shadow-xl hover:shadow-brand/30 active:translate-y-0 disabled:opacity-60 disabled:hover:translate-y-0"
                 >
-                  {loading === "password" || loading === "link" ? (
+                  {loading === "password" ? (
                     <Spinner />
                   ) : (
                     <>
-                      <span>{method === "password" ? "Sign in" : "Email me a sign-in link"}</span>
+                      <span>Sign in</span>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="transition-transform group-hover:translate-x-0.5"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
                     </>
                   )}
@@ -323,7 +257,7 @@ function LoginForm() {
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>
                 </div>
                 <p className="text-xs text-ink-500 leading-relaxed">
-                  <span className="font-medium text-ink-700">New to the team?</span> Ask the owner to invite your email, then sign in with it. Your role decides what you can see.
+                  <span className="font-medium text-ink-700">New to the team?</span> Ask the owner to create your login under Team &amp; Access. Your role decides what you can see.
                 </p>
               </div>
             </div>

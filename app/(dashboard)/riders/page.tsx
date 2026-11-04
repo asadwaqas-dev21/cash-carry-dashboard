@@ -4,7 +4,8 @@ import { RIDER_STATUSES } from '@/lib/enums';
 import FormModal from '@/components/admin/FormModal';
 import ConfirmButton from '@/components/admin/ConfirmButton';
 import { Field, Hidden, PlusIcon, Row, Select, enumOptions, triggerLink } from '@/components/admin/fields';
-import { deleteRider, receiveRiderCash, saveRider } from './actions';
+import { deleteRider, receiveRiderCash, saveRider, setRiderPassword } from './actions';
+import { hasAdminKey } from '@/lib/supabase-admin';
 
 export const revalidate = 0;
 
@@ -17,7 +18,7 @@ function RiderFields({ rider }: { rider?: any }) {
         <Field label="Rider code" name="rider_code" defaultValue={rider?.rider_code} placeholder="Auto, e.g. R-001" />
         <Field label="Phone" name="phone" type="tel" defaultValue={rider?.phone} />
       </Row>
-      <Field label="Email" name="email" type="email" defaultValue={rider?.email} hint="The rider signs in to the rider app with this email" />
+      <Field label="Email" name="email" type="email" defaultValue={rider?.email} hint="Their rider app login. Then use “App password” to set the password." />
       <Row>
         <Field label="Vehicle type" name="vehicle_type" defaultValue={rider?.vehicle_type} placeholder="e.g. Motorbike" />
         <Field label="Vehicle number" name="vehicle_number" defaultValue={rider?.vehicle_number} />
@@ -117,6 +118,19 @@ export default async function RidersPage() {
                 <FormModal action={saveRider} title="Edit rider" trigger="Edit" triggerClassName={triggerLink}>
                   <RiderFields rider={rider} />
                 </FormModal>
+                {hasAdminKey && rider.email && (
+                  <FormModal
+                    action={setRiderPassword}
+                    title={`App password · ${rider.full_name}`}
+                    description={`Rider app login: ${rider.email}`}
+                    trigger="App password"
+                    triggerClassName={triggerLink}
+                    submitLabel="Set password"
+                  >
+                    <Hidden name="id" value={rider.id} />
+                    <Field label="Password" name="password" type="text" required hint="At least 8 characters" />
+                  </FormModal>
+                )}
                 {cash > 0 && (
                   <ConfirmButton
                     action={receiveRiderCash}
