@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { DashboardUser } from "@/lib/auth";
+import { canAccess, ROLE_LABELS } from "@/lib/roles";
+import { initials } from "@/lib/format";
 
-export default function Sidebar() {
+export default function Sidebar({ user }: { user: DashboardUser }) {
   const pathname = usePathname();
+  const show = (href: string) => canAccess(user.role, href);
 
   return (
     <aside className="w-56 bg-canvas border-r border-border flex flex-col shrink-0">
@@ -68,15 +72,16 @@ export default function Sidebar() {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
           Customers
         </Link>
-        <Link href="/riders" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/riders') ? 'active' : ''}`}>
+        {show('/riders') && <Link href="/riders" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/riders') ? 'active' : ''}`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="5.5" cy="17.5" r="3.5" /><circle cx="18.5" cy="17.5" r="3.5" /><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" /><path d="M12 17.5V14l-3-3 4-3 2 3h2" /></svg>
           Riders
-        </Link>
-        <Link href="/staff" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/staff') ? 'active' : ''}`}>
+        </Link>}
+        {show('/staff') && <Link href="/staff" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/staff') ? 'active' : ''}`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 7h-9" /><path d="M14 17H5" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" /></svg>
           Staff
-        </Link>
+        </Link>}
 
+        {show('/payments') && <>
         <div className="text-2xs text-ink-400 uppercase tracking-wider px-3 py-1.5 mt-3">Money</div>
         <Link href="/payments" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/payments') ? 'active' : ''}`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></svg>
@@ -90,8 +95,13 @@ export default function Sidebar() {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
           Analytics
         </Link>
+        </>}
 
         <div className="text-2xs text-ink-400 uppercase tracking-wider px-3 py-1.5 mt-3">System</div>
+        {show('/team') && <Link href="/team" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/team') ? 'active' : ''}`}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>
+          Team &amp; Access
+        </Link>}
         <Link href="/settings" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/settings') ? 'active' : ''}`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
           Settings
@@ -101,10 +111,15 @@ export default function Sidebar() {
       {/* User */}
       <div className="border-t border-borderMuted p-2">
         <div className="flex items-center gap-2.5 p-1.5 rounded-md">
-          <div className="w-7 h-7 rounded-full bg-ink-900 text-white text-xs font-semibold flex items-center justify-center shrink-0">SA</div>
+          {user.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" className="w-7 h-7 rounded-full shrink-0 object-cover" />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-ink-900 text-white text-xs font-semibold flex items-center justify-center shrink-0">{initials(user.fullName)}</div>
+          )}
           <div className="text-left min-w-0 flex-1">
-            <div className="text-xs font-medium truncate">Asad Waqas</div>
-            <div className="text-2xs text-ink-400">Owner</div>
+            <div className="text-xs font-medium truncate" title={user.email}>{user.fullName}</div>
+            <div className="text-2xs text-ink-400">{ROLE_LABELS[user.role]}</div>
           </div>
           <button
             onClick={async () => {

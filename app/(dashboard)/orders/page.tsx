@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 import { formatDateTime, formatMoney, labelize } from '@/lib/format';
 
 export const revalidate = 0;
@@ -11,6 +11,7 @@ function statusClass(status: string) {
 }
 
 export default async function OrdersPage() {
+  const { supabase } = await requirePageAccess('/orders');
   const [{ data: orders }, { count: totalCount }, { count: pendingCount }, { count: deliveryCount }] =
     await Promise.all([
       supabase

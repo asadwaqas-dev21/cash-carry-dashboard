@@ -1,10 +1,11 @@
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 import { formatNumber } from '@/lib/format';
 import Link from 'next/link';
 
 export const revalidate = 0;
 
 export default async function InventoryPage() {
+  const { supabase } = await requirePageAccess('/inventory');
   const { data } = await supabase
     .from('inventory_balances')
     .select('*, products(name, sku, reorder_level, wholesale_price, category_id, categories(name)), locations(name, code)')

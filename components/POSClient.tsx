@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { formatMoney } from '@/lib/format';
-import { createPOSOrder } from '@/app/pos/actions';
+import { createPOSOrder } from '@/app/(dashboard)/pos/actions';
 
 type Product = {
   id: string;

@@ -1,6 +1,7 @@
 import { addProduct } from '../actions';
 import Link from 'next/link';
 import CategorySelect from '@/components/CategorySelect';
+import { requirePageAccess } from '@/lib/auth';
 
 export const revalidate = 0;
 
@@ -9,6 +10,7 @@ export default async function NewProductPage({
 }: {
   searchParams?: Promise<{ error?: string }>;
 }) {
+  await requirePageAccess('/products/new');
   const params = await searchParams;
 
   return (

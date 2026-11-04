@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 import { formatDateTime, formatMoney, labelize, startOfTodayIso, sumBy } from '@/lib/format';
 
 export const revalidate = 0;
@@ -11,6 +11,7 @@ function methodClass(method: string) {
 }
 
 export default async function PaymentsPage() {
+  const { supabase } = await requirePageAccess('/payments');
   const today = startOfTodayIso();
   const [{ data: payments }, { data: todayPayments }, { data: creditOrders }] = await Promise.all([
     supabase.from('payments').select('*, orders(order_number)').order('paid_at', { ascending: false }).limit(100),

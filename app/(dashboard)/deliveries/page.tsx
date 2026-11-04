@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 import { formatDateTime, formatMoney, initials, labelize } from '@/lib/format';
 
 export const revalidate = 0;
@@ -11,6 +11,7 @@ function deliveryClass(status: string) {
 }
 
 export default async function DeliveriesPage() {
+  const { supabase } = await requirePageAccess('/deliveries');
   const { data: deliveries } = await supabase
     .from('deliveries')
     .select('*, orders(order_number, grand_total, customer_addresses(city, address_line1), customers(display_name)), riders(full_name, rider_code, status)')

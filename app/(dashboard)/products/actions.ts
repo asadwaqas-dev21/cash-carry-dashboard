@@ -1,73 +1,13 @@
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-async function getOrCreateOrganizationId() {
-  const { data: orgs, error: orgReadError } = await supabase
-    .from('organizations')
-    .select('id')
-    .limit(1);
-
-  if (orgReadError) {
-    console.error('Error reading organization:', orgReadError);
-  }
-
-  let existingOrgId = orgs?.[0]?.id;
-
-  if (existingOrgId) {
-    // Ensure a location exists for this org
-    const { data: locs } = await supabase.from('locations').select('id').eq('org_id', existingOrgId).limit(1);
-    if (!locs || locs.length === 0) {
-      await supabase.from('locations').insert({
-        org_id: existingOrgId,
-        name: 'Main Location',
-        code: 'MAIN',
-        type: 'warehouse',
-        country: 'Pakistan',
-      });
-    }
-    return existingOrgId;
-  }
-
-  const { data: org, error: orgCreateError } = await supabase
-    .from('organizations')
-    .insert({
-      name: 'Kirana Cash & Carry',
-      slug: 'kirana-cash-carry',
-      currency_code: 'Rs',
-      timezone: 'Asia/Karachi',
-    })
-    .select('id')
-    .single();
-
-  if (orgCreateError || !org?.id) {
-    console.error('Error creating organization:', orgCreateError);
-    return null;
-  }
-
-  const { error: locationError } = await supabase.from('locations').insert({
-    org_id: org.id,
-    name: 'Main Location',
-    code: 'MAIN',
-    type: 'warehouse',
-    country: 'Pakistan',
-  });
-
-  if (locationError) {
-    console.error('Error creating default location:', locationError);
-  }
-
-  return org.id;
-}
-
 export async function addProduct(formData: FormData) {
-  const org_id = await getOrCreateOrganizationId();
-
-  if (!org_id) {
-    redirect('/products/new?error=missing-organization');
-  }
+  // Only owners can change the catalogue (also enforced by RLS on products).
+  const { user, supabase } = await requireRole('owner');
+  const org_id = user.orgId;
 
   const newProduct = {
     org_id,
@@ -127,11 +67,9 @@ export async function addProduct(formData: FormData) {
 }
 
 export async function updateProduct(id: string, formData: FormData) {
-  const org_id = await getOrCreateOrganizationId();
-
-  if (!org_id) {
-    redirect(`/products/edit/${id}?error=missing-organization`);
-  }
+  // Only owners can change the catalogue (also enforced by RLS on products).
+  const { user, supabase } = await requireRole('owner');
+  const org_id = user.orgId;
 
   const updatedProduct = {
     name: formData.get('name') as string,
@@ -220,11 +158,9 @@ export async function updateProduct(id: string, formData: FormData) {
 }
 
 export async function deleteProduct(id: string) {
-  const org_id = await getOrCreateOrganizationId();
-
-  if (!org_id) {
-    redirect(`/products/edit/${id}?error=missing-organization`);
-  }
+  // Only owners can change the catalogue (also enforced by RLS on products).
+  const { user, supabase } = await requireRole('owner');
+  const org_id = user.orgId;
 
   const { error } = await supabase
     .from('products')

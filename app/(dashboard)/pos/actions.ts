@@ -1,13 +1,7 @@
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
-
-// Re-using the same org ID helper (ideally in a shared lib, but redefining for simplicity in POS)
-async function getOrCreateOrganizationId() {
-  const { data: orgs } = await supabase.from('organizations').select('id').limit(1);
-  return orgs?.[0]?.id || null;
-}
 
 export async function createPOSOrder(orderData: {
   cart: { id: string; name: string; price: number; quantity: number }[];
@@ -16,8 +10,8 @@ export async function createPOSOrder(orderData: {
   cashReceived?: number;
   cashChange?: number;
 }) {
-  const org_id = await getOrCreateOrganizationId();
-  if (!org_id) throw new Error('Organization not found');
+  const { user, supabase } = await requireRole('owner', 'sales_person');
+  const org_id = user.orgId;
 
   const { data: location } = await supabase
     .from('locations')
@@ -43,6 +37,7 @@ export async function createPOSOrder(orderData: {
       subtotal: orderData.total,
       grand_total: orderData.total,
       paid_total: orderData.total,
+      created_by: user.id,
     })
     .select('id')
     .single();
@@ -98,7 +93,7 @@ export async function createPOSOrder(orderData: {
           .from('inventory_balances')
           .update({ quantity_on_hand: Number(balance.quantity_on_hand) - item.quantity })
           .eq('id', balance.id);
-          
+
         await supabase.from('stock_movements').insert({
           org_id,
           location_id: location.id,

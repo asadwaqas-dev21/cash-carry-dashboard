@@ -1,7 +1,7 @@
 import { updateProduct, deleteProduct } from '../../actions';
 import Link from 'next/link';
 import CategorySelect from '@/components/CategorySelect';
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 import { notFound } from 'next/navigation';
 
 export const revalidate = 0;
@@ -13,6 +13,7 @@ export default async function EditProductPage({
   params: Promise<{ id: string }>;
   searchParams?: Promise<{ error?: string }>;
 }) {
+  const { supabase } = await requirePageAccess('/products/edit');
   const { id } = await params;
   const resolvedSearchParams = await searchParams;
 

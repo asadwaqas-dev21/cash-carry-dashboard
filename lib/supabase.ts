@@ -1,22 +1,36 @@
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+import { createMockClient } from './supabase-mock';
+import { hasSupabase, supabaseKey, supabaseUrl } from './supabase-env';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || (!supabaseAnonKey && !supabaseServiceRoleKey)) {
-  throw new Error(
-    'Supabase credentials are missing. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY, or SUPABASE_SERVICE_ROLE_KEY for server-side dashboard access.'
+if (!hasSupabase) {
+  console.warn(
+    'Supabase credentials are missing. Using an offline mock client with empty data. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.'
   );
 }
 
-export const supabase = createClient(
-  supabaseUrl,
-  (supabaseServiceRoleKey || supabaseAnonKey) as string,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
+/**
+ * Supabase client for Server Components, Server Actions and Route Handlers.
+ * It acts as the signed-in user (read from the auth cookies), so RLS policies
+ * decide what each role can see and change. Create one per request.
+ */
+export async function createClient(): Promise<SupabaseClient> {
+  if (!hasSupabase) return createMockClient();
+
+  const cookieStore = await cookies();
+  return createServerClient(supabaseUrl!, supabaseKey!, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          for (const { name, value, options } of cookiesToSet) cookieStore.set(name, value, options);
+        } catch {
+          // Server Components can't write cookies; proxy.ts refreshes the session instead.
+        }
+      },
     },
-  }
-);
+  });
+}

@@ -1,10 +1,13 @@
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createMockClient } from './supabase-mock';
+import { hasSupabase, supabaseKey, supabaseUrl } from './supabase-env';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
+if (!hasSupabase) {
+  console.warn('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY. Using an offline mock client.');
 }
 
-export const supabaseBrowser = createClient(supabaseUrl, supabaseAnonKey);
+// Stores the session in cookies (not localStorage) so the server sees the same user.
+export const supabaseBrowser: SupabaseClient = hasSupabase
+  ? createBrowserClient(supabaseUrl!, supabaseKey!)
+  : createMockClient();

@@ -1,8 +1,9 @@
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 
 export const revalidate = 0;
 
 export default async function RidersPage() {
+  const { supabase } = await requirePageAccess('/riders');
   const { data: riders } = await supabase
     .from('riders')
     .select('*')

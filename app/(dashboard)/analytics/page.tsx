@@ -1,9 +1,10 @@
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 import { formatMoney, startOfDaysAgoIso, sumBy } from '@/lib/format';
 
 export const revalidate = 0;
 
 export default async function AnalyticsPage() {
+  const { supabase } = await requirePageAccess('/analytics');
   const { data: orders } = await supabase
     .from('orders')
     .select('grand_total, currency_code')

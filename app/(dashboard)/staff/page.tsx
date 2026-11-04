@@ -1,8 +1,9 @@
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 
 export const revalidate = 0;
 
 export default async function StaffPage() {
+  const { supabase } = await requirePageAccess('/staff');
   const { data: staff } = await supabase
     .from('staff')
     .select('*')

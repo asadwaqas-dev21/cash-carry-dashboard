@@ -1,9 +1,10 @@
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 import { formatDateTime, formatMoney, labelize, startOfTodayIso, sumBy } from '@/lib/format';
 
 export const revalidate = 0;
 
 export default async function CashPage() {
+  const { supabase } = await requirePageAccess('/cash');
   const today = startOfTodayIso();
   const [{ data: openSessions }, { data: cashPayments }, { data: reconciliations }] = await Promise.all([
     supabase.from('pos_sessions').select('*, staff(full_name), locations(name)').eq('status', 'open').order('opened_at', { ascending: false }).limit(1),

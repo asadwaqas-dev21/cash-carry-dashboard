@@ -1,10 +1,11 @@
 export const revalidate = 0;
 
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 import { formatNumber, formatMoney } from '@/lib/format';
 
 export default async function DashboardOverview() {
+  const { supabase } = await requirePageAccess('/');
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString();

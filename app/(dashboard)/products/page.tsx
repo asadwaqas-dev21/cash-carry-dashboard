@@ -1,10 +1,11 @@
-import { supabase } from '@/lib/supabase';
+import { requirePageAccess } from '@/lib/auth';
 import { formatMoney, formatNumber } from '@/lib/format';
 import Link from 'next/link';
 
 export const revalidate = 0;
 
 export default async function ProductsPage() {
+  const { supabase } = await requirePageAccess('/products');
   const { data: products } = await supabase
     .from('products')
     .select(`
