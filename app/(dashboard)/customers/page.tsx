@@ -1,18 +1,57 @@
 import { requirePageAccess } from '@/lib/auth';
+import { formatMoney, initials, labelize } from '@/lib/format';
+import { CLOSED_ORDER_STATUSES, CUSTOMER_STATUSES, CUSTOMER_TYPES } from '@/lib/enums';
+import FormModal from '@/components/admin/FormModal';
+import ConfirmButton from '@/components/admin/ConfirmButton';
+import { Field, Hidden, PlusIcon, Row, SearchBox, Select, TextArea, enumOptions, searchPattern, triggerLink } from '@/components/admin/fields';
+import { deleteCustomer, saveCustomer } from './actions';
 
 export const revalidate = 0;
 
-export default async function CustomersPage() {
-  const { supabase } = await requirePageAccess('/customers');
-  const { data: customers } = await supabase
-    .from('customers')
-    .select(`
-      *,
-      orders ( grand_total )
-    `)
-    .order('display_name');
+function CustomerFields({ customer }: { customer?: any }) {
+  const address = (customer?.customer_addresses || []).find((a: any) => a.is_default) || customer?.customer_addresses?.[0];
+  return (
+    <>
+      <Hidden name="id" value={customer?.id} />
+      <Hidden name="address_id" value={address?.id} />
+      <Field label="Name" name="display_name" required defaultValue={customer?.display_name} placeholder="Person or shop name" />
+      <Row>
+        <Select label="Type" name="type" options={enumOptions(CUSTOMER_TYPES)} defaultValue={customer?.type || 'individual'} />
+        <Select label="Status" name="status" options={enumOptions(CUSTOMER_STATUSES)} defaultValue={customer?.status || 'active'} />
+      </Row>
+      <Row>
+        <Field label="Phone" name="phone" type="tel" defaultValue={customer?.phone} />
+        <Field label="Email" name="email" type="email" defaultValue={customer?.email} />
+      </Row>
+      <Row>
+        <Field label="Business name" name="business_name" defaultValue={customer?.business_name} hint="For business customers" />
+        <Field label="Credit limit (Rs)" name="credit_limit" type="number" step="0.01" min="0" defaultValue={customer?.credit_limit ?? 0} />
+      </Row>
+      <Row>
+        <Field label="Delivery address" name="address_line1" defaultValue={address?.address_line1} placeholder="Street, building" />
+        <Field label="City" name="city" defaultValue={address?.city} />
+      </Row>
+      <TextArea label="Notes" name="notes" defaultValue={customer?.notes} />
+    </>
+  );
+}
 
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { q = '' } = await searchParams;
+  const { user, supabase } = await requirePageAccess('/customers');
+  const isOwner = user.role === 'owner';
+
+  let query = supabase
+    .from('customers')
+    .select('*, orders(grand_total, status), customer_addresses(id, address_line1, city, is_default)')
+    .order('display_name');
+  if (q.trim()) {
+    const pattern = searchPattern(q);
+    query = query.or(`display_name.ilike.${pattern},phone.ilike.${pattern},email.ilike.${pattern}`);
+  }
+  const { data: customers } = await query;
   const customersList = customers || [];
+
   return (
     <section className="px-6 py-5 flex flex-col h-full">
       <div className="flex items-end justify-between mb-6">
@@ -21,14 +60,10 @@ export default async function CustomersPage() {
           <div className="text-sm text-ink-500 mt-1">Manage wholesale accounts and individual buyers</div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <svg className="absolute left-2.5 top-2 text-ink-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" placeholder="Search customer name or phone" className="pl-8 pr-3 h-8 w-64 rounded-md border border-border bg-white text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition" />
-          </div>
-          <button className="h-8 px-3 rounded-md bg-ink-900 text-white text-sm font-medium hover:bg-ink-700 transition flex items-center gap-1.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            Add Customer
-          </button>
+          <SearchBox placeholder="Search name, phone or email" defaultValue={q} />
+          <FormModal action={saveCustomer} title="Add customer" trigger={<><PlusIcon /> Add Customer</>} submitLabel="Add customer" wide>
+            <CustomerFields />
+          </FormModal>
         </div>
       </div>
 
@@ -41,39 +76,59 @@ export default async function CustomersPage() {
                 <th className="text-left font-medium py-3">Type</th>
                 <th className="text-left font-medium py-3">Contact</th>
                 <th className="text-right font-medium py-3">Total Orders</th>
-                <th className="text-right font-medium px-5 py-3">Lifetime Value</th>
+                <th className="text-right font-medium py-3">Lifetime Value</th>
+                <th className="text-right font-medium px-5 py-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-borderMuted">
               {customersList.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-ink-500">
-                    No customers found. Please add customers to your Supabase database.
+                  <td colSpan={6} className="px-5 py-8 text-center text-ink-500">
+                    {q ? `No customers match “${q}”.` : 'No customers yet. Use “Add Customer” to create one.'}
                   </td>
                 </tr>
               )}
               {customersList.map((item: any) => {
-                const typeLabel = item.customer_type === 'b2b_wholesale' ? 'B2B Wholesale' : 'Individual';
-                const orderCount = item.orders?.length || 0;
-                const ltv = item.orders?.reduce((sum: number, order: any) => sum + Number(order.grand_total || 0), 0) || 0;
-                const name = item.display_name || item.full_name || 'Unknown';
-                
+                const orders = (item.orders || []).filter((order: any) => !CLOSED_ORDER_STATUSES.includes(order.status));
+                const ltv = orders.reduce((sum: number, order: any) => sum + Number(order.grand_total || 0), 0);
+                const isBusiness = item.type === 'business';
+
                 return (
-                  <tr key={item.id} className="hover:bg-canvas transition cursor-pointer">
-                    <td className="px-5 py-4 font-medium flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-ink-100 flex items-center justify-center text-xs font-semibold text-ink-700">
-                        {name.substring(0, 2).toUpperCase()}
+                  <tr key={item.id} className="hover:bg-canvas transition">
+                    <td className="px-5 py-4 font-medium">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-ink-100 flex items-center justify-center text-xs font-semibold text-ink-700 shrink-0">
+                          {initials(item.display_name)}
+                        </div>
+                        <div>
+                          {item.display_name}
+                          {item.status !== 'active' && <span className="ml-2 terminal-badge bg-badSoft text-bad">{labelize(item.status)}</span>}
+                        </div>
                       </div>
-                      {name}
                     </td>
                     <td className="py-4">
-                      <span className={`terminal-badge ${typeLabel.includes('B2B') ? 'bg-brand-soft text-brand' : 'bg-ink-100 text-ink-600'}`}>
-                        {typeLabel}
+                      <span className={`terminal-badge ${isBusiness ? 'bg-brand-soft text-brand' : 'bg-ink-100 text-ink-600'}`}>
+                        {isBusiness ? 'Business' : 'Individual'}
                       </span>
                     </td>
-                    <td className="py-4 text-ink-500 num tabular text-xs">{item.phone || '-'}</td>
-                    <td className="py-4 text-right num tabular font-medium">{orderCount}</td>
-                    <td className="px-5 py-4 text-right num tabular font-medium text-ink-700">Rs {ltv.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td className="py-4 text-ink-500 num tabular text-xs">
+                      {item.phone || '-'}
+                      {item.email && <div className="text-2xs text-ink-400">{item.email}</div>}
+                    </td>
+                    <td className="py-4 text-right num tabular font-medium">{orders.length}</td>
+                    <td className="py-4 text-right num tabular font-medium text-ink-700">{formatMoney(ltv)}</td>
+                    <td className="px-5 py-4 text-right whitespace-nowrap">
+                      <span className="inline-flex items-center gap-3">
+                        <FormModal action={saveCustomer} title="Edit customer" trigger="Edit" triggerClassName={triggerLink} wide>
+                          <CustomerFields customer={item} />
+                        </FormModal>
+                        {isOwner && (
+                          <ConfirmButton action={deleteCustomer} fields={{ id: item.id }} confirm={`Delete “${item.display_name}”? Their past orders stay but lose the customer link.`}>
+                            Delete
+                          </ConfirmButton>
+                        )}
+                      </span>
+                    </td>
                   </tr>
                 );
               })}

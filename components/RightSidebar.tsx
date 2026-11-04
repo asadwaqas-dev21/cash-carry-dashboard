@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { formatMoney } from "@/lib/format";
 
@@ -8,27 +10,27 @@ export default function RightSidebar() {
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [metrics, setMetrics] = useState({ rate: 0, active: 0, queue: 0 });
   const [loading, setLoading] = useState(true);
+  // "x min ago" is relative to when the feed was loaded.
+  const [fetchedAt, setFetchedAt] = useState(0);
+  // Refetch on navigation so the feed reflects changes just made.
+  const pathname = usePathname();
 
   useEffect(() => {
     async function fetchData() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Active (orders today)
-      const { count: activeCount } = await supabaseBrowser
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', today.toISOString());
-
-      // Queue (pending orders)
-      const { count: queueCount } = await supabaseBrowser
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['pending', 'draft']);
+      const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const [{ count: lastHourCount }, { count: todayCount }, { count: queueCount }] = await Promise.all([
+        supabaseBrowser.from('orders').select('id', { count: 'exact', head: true }).gte('created_at', hourAgo.toISOString()),
+        supabaseBrowser.from('orders').select('id', { count: 'exact', head: true }).gte('created_at', today.toISOString()),
+        // Orders waiting to be handled.
+        supabaseBrowser.from('orders').select('id', { count: 'exact', head: true }).in('status', ['pending', 'confirmed', 'preparing', 'ready']),
+      ]);
 
       setMetrics({
-        rate: activeCount ? Math.floor((activeCount / 60)) || 1 : 0, // approx per min
-        active: activeCount || 0,
+        rate: lastHourCount || 0,
+        active: todayCount || 0,
         queue: queueCount || 0
       });
 
@@ -41,13 +43,14 @@ export default function RightSidebar() {
       if (data) {
         setRecentOrders(data);
       }
+      setFetchedAt(Date.now());
       setLoading(false);
     }
     fetchData();
-  }, []);
+  }, [pathname]);
 
   const timeAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
+    const diff = fetchedAt - new Date(dateStr).getTime();
     const minutes = Math.floor(diff / 60000);
     if (minutes < 1) return "just now";
     if (minutes < 60) return `${minutes}m ago`;
@@ -78,16 +81,15 @@ export default function RightSidebar() {
           <span className="pulse-dot text-brand"><span className="block w-1.5 h-1.5 rounded-full bg-brand"></span></span>
           <h2 className="text-sm font-semibold">Live floor</h2>
         </div>
-        <button className="text-2xs text-ink-400 hover:text-ink-900 transition">Pause</button>
       </div>
 
       <div className="px-5 py-4 border-b border-borderMuted grid grid-cols-3 gap-2">
         <div>
-          <div className="text-2xs text-ink-400 uppercase tracking-wider mb-1">Rate</div>
-          <div className="text-sm font-medium num tabular text-ink-900">{metrics.rate}/min</div>
+          <div className="text-2xs text-ink-400 uppercase tracking-wider mb-1">Last hour</div>
+          <div className="text-sm font-medium num tabular text-ink-900">{metrics.rate}</div>
         </div>
         <div>
-          <div className="text-2xs text-ink-400 uppercase tracking-wider mb-1">Active</div>
+          <div className="text-2xs text-ink-400 uppercase tracking-wider mb-1">Today</div>
           <div className="text-sm font-medium num tabular text-ink-900">{metrics.active}</div>
         </div>
         <div>
@@ -103,25 +105,25 @@ export default function RightSidebar() {
           <div className="p-4 text-center text-ink-400 text-sm">No recent activity</div>
         ) : (
           recentOrders.map((order, i) => (
-            <div key={order.id} className="feed-item flex items-start gap-3 p-2 rounded hover:bg-canvas transition" style={{ animationDelay: `${i * 50}ms` }}>
+            <Link key={order.id} href={`/orders/${order.id}`} className="feed-item flex items-start gap-3 p-2 rounded hover:bg-canvas transition" style={{ animationDelay: `${i * 50}ms` }}>
               {getIconForChannel(order.channel)}
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-ink-700 truncate">{order.channel === 'pos' ? 'POS order' : 'App order'} {order.order_number}</div>
-                <div className="text-xs text-ink-500 mt-0.5">{order.channel === 'pos' ? 'In-store POS' : 'Customer app'}</div>
+                <div className="text-xs text-ink-500 mt-0.5">{order.status.replace(/_/g, ' ')}</div>
               </div>
               <div className="text-right shrink-0">
                 <div className="text-xs text-ink-400 num tabular">{timeAgo(order.created_at)}</div>
                 <div className="text-xs text-brand font-medium num tabular mt-0.5">{formatMoney(order.grand_total)}</div>
               </div>
-            </div>
+            </Link>
           ))
         )}
       </div>
 
       <div className="p-4 border-t border-borderMuted">
-        <button className="w-full py-2 bg-white border border-border hover:border-ink-400 text-sm text-ink-700 font-medium rounded-md transition shadow-sm">
-          View full audit log
-        </button>
+        <Link href="/orders" className="block w-full py-2 text-center bg-white border border-border hover:border-ink-400 text-sm text-ink-700 font-medium rounded-md transition shadow-sm">
+          View all orders
+        </Link>
       </div>
     </aside>
   );

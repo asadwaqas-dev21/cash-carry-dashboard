@@ -1,26 +1,26 @@
 import { requirePageAccess } from '@/lib/auth';
-import { formatMoney, formatNumber } from '@/lib/format';
+import { formatMoney, formatNumber, labelize } from '@/lib/format';
+import { PlusIcon, SearchBox, searchPattern, triggerPrimary } from '@/components/admin/fields';
 import Link from 'next/link';
 
 export const revalidate = 0;
 
-export default async function ProductsPage() {
-  const { supabase } = await requirePageAccess('/products');
-  const { data: products } = await supabase
-    .from('products')
-    .select(`
-      *,
-      categories (
-        name
-      ),
-      inventory_balances (
-        quantity_on_hand,
-        reorder_level
-      )
-    `)
-    .order('name');
+export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { q = '' } = await searchParams;
+  const { user, supabase } = await requirePageAccess('/products');
+  const isOwner = user.role === 'owner';
 
+  let query = supabase
+    .from('products')
+    .select('*, categories(name), inventory_balances(quantity_on_hand, reorder_level)')
+    .order('name');
+  if (q.trim()) {
+    const pattern = searchPattern(q);
+    query = query.or(`name.ilike.${pattern},sku.ilike.${pattern},barcode.ilike.${pattern}`);
+  }
+  const { data: products } = await query;
   const productsList = products || [];
+
   return (
     <section className="px-6 py-5 flex flex-col h-full">
       {/* Page header */}
@@ -30,18 +30,13 @@ export default async function ProductsPage() {
           <div className="text-sm text-ink-500 mt-1">Manage items, pricing, and barcodes</div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <svg className="absolute left-2.5 top-2 text-ink-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" placeholder="Search by name, SKU or barcode" className="pl-8 pr-3 h-8 w-64 rounded-md border border-border bg-white text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition" />
-          </div>
-          <button className="h-8 px-3 rounded-md border border-border bg-white text-sm font-medium hover:bg-ink-200/40 transition flex items-center gap-1.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Export
-          </button>
-          <Link href="/products/new" className="h-8 px-3 rounded-md bg-ink-900 text-white text-sm font-medium hover:bg-ink-700 transition flex items-center gap-1.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            Add Product
-          </Link>
+          <SearchBox placeholder="Search by name, SKU or barcode" defaultValue={q} />
+          {isOwner && (
+            <Link href="/products/new" className={triggerPrimary}>
+              <PlusIcon />
+              Add Product
+            </Link>
+          )}
         </div>
       </div>
 
@@ -56,14 +51,15 @@ export default async function ProductsPage() {
                 <th className="text-right font-medium py-3">Cost Price</th>
                 <th className="text-right font-medium py-3">Selling Price</th>
                 <th className="text-right font-medium px-5 py-3">Stock</th>
-                <th className="text-right font-medium px-5 py-3">Actions</th>
+                {isOwner && <th className="text-right font-medium px-5 py-3">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-borderMuted">
               {productsList.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-5 py-8 text-center text-ink-500">
-                    No products found. Please add products to your Supabase database.
+                    {q ? `No products match “${q}”.` : 'No products yet.'}
+                    {!q && isOwner && ' Use “Add Product” to create the first one.'}
                   </td>
                 </tr>
               )}
@@ -79,10 +75,18 @@ export default async function ProductsPage() {
                 );
                 const status = stock <= 0 ? 'bad' : reorderLevel > 0 && stock <= reorderLevel ? 'warn' : 'good';
                 return (
-                  <tr key={item.id} className="hover:bg-canvas transition cursor-pointer">
-                    <td className="px-5 py-3 font-medium">{item.name}</td>
+                  <tr key={item.id} className="hover:bg-canvas transition">
+                    <td className="px-5 py-3 font-medium">
+                      {item.name}
+                      {item.status !== 'active' && (
+                        <span className="ml-2 terminal-badge bg-ink-100 text-ink-500">{labelize(item.status)}</span>
+                      )}
+                    </td>
                     <td className="py-3 text-ink-500">{item.categories?.name || 'Uncategorized'}</td>
-                    <td className="py-3 text-ink-400 num tabular text-xs">{item.sku || item.barcode || '-'}</td>
+                    <td className="py-3 text-ink-400 num tabular text-xs">
+                      {item.sku}
+                      {item.barcode && <div className="text-2xs">{item.barcode}</div>}
+                    </td>
                     <td className="py-3 text-right num tabular text-ink-500">{formatMoney(item.cost_price)}</td>
                     <td className="py-3 text-right num tabular font-medium">{formatMoney(item.retail_price)}</td>
                     <td className="px-5 py-3 text-right">
@@ -94,11 +98,13 @@ export default async function ProductsPage() {
                         {formatNumber(stock)}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-right">
-                      <Link href={`/products/edit/${item.id}`} className="text-brand hover:underline font-medium text-xs">
-                        Edit
-                      </Link>
-                    </td>
+                    {isOwner && (
+                      <td className="px-5 py-3 text-right">
+                        <Link href={`/products/edit/${item.id}`} className="text-brand hover:underline font-medium text-xs">
+                          Edit
+                        </Link>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

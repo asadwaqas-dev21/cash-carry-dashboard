@@ -2,116 +2,151 @@
 
 import { requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
+import { check, defaultLocationId, referenceNumber } from '@/lib/action-state';
+import { openSession } from '@/lib/cash';
+import { recordStockMovement } from '@/lib/stock';
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+export type POSResult =
+  | { success: true; orderNumber: string; total: number; tax: number; subtotal: number; items: { name: string; quantity: number; price: number; taxRate: number }[] }
+  | { success: false; error: string };
+
+/**
+ * Rings up a counter sale. Prices, tax and stock come from the database, not
+ * the browser; the cart only says which products and how many.
+ */
 export async function createPOSOrder(orderData: {
-  cart: { id: string; name: string; price: number; quantity: number }[];
-  total: number;
-  paymentMethod: string;
+  cart: { id: string; quantity: number }[];
+  paymentMethod: 'cash' | 'card';
   cashReceived?: number;
-  cashChange?: number;
-}) {
-  const { user, supabase } = await requireRole('owner', 'sales_person');
-  const org_id = user.orgId;
+}): Promise<POSResult> {
+  try {
+    const { user, supabase } = await requireRole('owner', 'sales_person');
+    const orgId = user.orgId;
+    if (!['cash', 'card'].includes(orderData.paymentMethod)) throw new Error('Choose cash or card.');
 
-  const { data: location } = await supabase
-    .from('locations')
-    .select('id')
-    .eq('org_id', org_id)
-    .limit(1)
-    .maybeSingle();
+    const cart = orderData.cart.filter((line) => Number.isInteger(line.quantity) && line.quantity > 0);
+    if (cart.length === 0) throw new Error('The cart is empty.');
 
-  // Generate a random order number like ORD-POS-XXXX
-  const orderNumber = `ORD-POS-${Math.floor(1000 + Math.random() * 9000)}`;
+    const locationId = await defaultLocationId(supabase, orgId);
+    const [{ data: products }, { data: balances }, session, { data: org }] = await Promise.all([
+      supabase.from('products').select('id, name, sku, retail_price, cost_price, tax_rate, status').in('id', cart.map((l) => l.id)),
+      supabase.from('inventory_balances').select('product_id, quantity_on_hand').eq('location_id', locationId).in('product_id', cart.map((l) => l.id)),
+      openSession(supabase, orgId, locationId),
+      supabase.from('organizations').select('currency_code').eq('id', orgId).maybeSingle(),
+    ]);
 
-  // 1. Create the Order
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert({
-      org_id,
-      location_id: location?.id || null,
-      order_number: orderNumber,
-      channel: 'pos',
-      status: 'completed',
-      payment_status: 'paid',
-      items_count: orderData.cart.reduce((sum, item) => sum + item.quantity, 0),
-      subtotal: orderData.total,
-      grand_total: orderData.total,
-      paid_total: orderData.total,
-      created_by: user.id,
-    })
-    .select('id')
-    .single();
-
-  if (orderError || !order) {
-    console.error('Failed to create order:', orderError);
-    throw new Error('Failed to create order');
-  }
-
-  // 2. Create Order Items
-  const orderItems = orderData.cart.map(item => ({
-    org_id,
-    order_id: order.id,
-    product_id: item.id,
-    product_name: item.name,
-    quantity: item.quantity,
-    unit_price: item.price,
-  }));
-
-  const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
-  if (itemsError) {
-    console.error('Failed to insert order items:', itemsError);
-  }
-
-  // 3. Record Payment
-  const { error: paymentError } = await supabase.from('payments').insert({
-    org_id,
-    order_id: order.id,
-    payment_number: `PAY-${orderNumber}`,
-    method: orderData.paymentMethod,
-    amount: orderData.total,
-    cash_received: orderData.cashReceived || null,
-    cash_change: orderData.cashChange || null,
-  });
-
-  if (paymentError) {
-    console.error('Failed to record payment:', paymentError);
-  }
-
-  // 4. Update Inventory & Record Stock Movements
-  for (const item of orderData.cart) {
-    // We fetch the current balance first to accurately deduct (though an RPC would be better in production)
-    if (location?.id) {
-      const { data: balance } = await supabase
-        .from('inventory_balances')
-        .select('id, quantity_on_hand')
-        .eq('product_id', item.id)
-        .eq('location_id', location.id)
-        .maybeSingle();
-
-      if (balance) {
-        await supabase
-          .from('inventory_balances')
-          .update({ quantity_on_hand: Number(balance.quantity_on_hand) - item.quantity })
-          .eq('id', balance.id);
-
-        await supabase.from('stock_movements').insert({
-          org_id,
-          location_id: location.id,
-          product_id: item.id,
-          movement_type: 'sale',
-          quantity: -item.quantity,
-          reference_type: 'order',
-          reference_id: order.id,
-          notes: 'POS Sale',
-        });
+    const lines = cart.map((line) => {
+      const product = (products || []).find((p) => p.id === line.id);
+      if (!product || product.status !== 'active') throw new Error('A product in the cart is no longer for sale. Refresh the page.');
+      const onHand = Number((balances || []).find((b) => b.product_id === line.id)?.quantity_on_hand || 0);
+      if (line.quantity > onHand) {
+        throw new Error(onHand > 0 ? `Only ${onHand} × ${product.name} in stock.` : `${product.name} is out of stock.`);
       }
+      const price = Number(product.retail_price);
+      const taxRate = Number(product.tax_rate || 0);
+      return { product, quantity: line.quantity, price, taxRate, net: line.quantity * price };
+    });
+
+    const subtotal = round2(lines.reduce((s, l) => s + l.net, 0));
+    const tax = round2(lines.reduce((s, l) => s + (l.net * l.taxRate) / 100, 0));
+    const total = round2(subtotal + tax);
+
+    let cashReceived: number | null = null;
+    if (orderData.paymentMethod === 'cash') {
+      cashReceived = Number(orderData.cashReceived);
+      if (!Number.isFinite(cashReceived) || cashReceived < total) throw new Error('Cash received is less than the total.');
     }
+
+    const orderNumber = referenceNumber('POS');
+    const currency = org?.currency_code || 'PKR';
+    const order = check(
+      await supabase
+        .from('orders')
+        .insert({
+          org_id: orgId,
+          location_id: locationId,
+          pos_session_id: session?.id ?? null,
+          order_number: orderNumber,
+          receipt_number: orderNumber,
+          channel: 'pos',
+          status: 'completed',
+          items_count: lines.length,
+          subtotal,
+          tax_total: tax,
+          grand_total: total,
+          currency_code: currency,
+          created_by: user.id,
+        })
+        .select('id')
+        .single()
+    ) as { id: string };
+
+    // The order_items trigger recalculates the order totals from these lines.
+    check(
+      await supabase.from('order_items').insert(
+        lines.map((l) => ({
+          org_id: orgId,
+          order_id: order.id,
+          product_id: l.product.id,
+          product_name: l.product.name,
+          sku: l.product.sku,
+          quantity: l.quantity,
+          unit_price: l.price,
+          unit_cost: Number(l.product.cost_price || 0),
+          tax_rate: l.taxRate,
+        }))
+      )
+    );
+
+    // The payments trigger sets the order's paid total and payment status.
+    check(
+      await supabase.from('payments').insert({
+        org_id: orgId,
+        order_id: order.id,
+        pos_session_id: session?.id ?? null,
+        payment_number: `PAY-${orderNumber}`,
+        method: orderData.paymentMethod,
+        amount: total,
+        currency_code: currency,
+        cash_received: cashReceived,
+        cash_change: cashReceived !== null ? round2(cashReceived - total) : null,
+        received_by: user.id,
+      })
+    );
+
+    for (const l of lines) {
+      await recordStockMovement(supabase, {
+        orgId,
+        locationId,
+        productId: l.product.id,
+        type: 'sale',
+        delta: -l.quantity,
+        unitCost: Number(l.product.cost_price || 0),
+        userId: user.id,
+        referenceTable: 'orders',
+        referenceId: order.id,
+        notes: `POS sale ${orderNumber}`,
+      });
+    }
+
+    revalidatePath('/pos');
+    revalidatePath('/inventory');
+    revalidatePath('/orders');
+    revalidatePath('/payments');
+    revalidatePath('/cash');
+    revalidatePath('/');
+
+    return {
+      success: true,
+      orderNumber,
+      subtotal,
+      tax,
+      total,
+      items: lines.map((l) => ({ name: l.product.name, quantity: l.quantity, price: l.price, taxRate: l.taxRate })),
+    };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Failed to process the sale.' };
   }
-
-  revalidatePath('/pos');
-  revalidatePath('/inventory');
-  revalidatePath('/orders');
-  revalidatePath('/'); // Dashboard
-
-  return { success: true, orderId: order.id, orderNumber };
 }

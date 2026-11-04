@@ -7,9 +7,15 @@ import { createPOSOrder } from '@/app/(dashboard)/pos/actions';
 type Product = {
   id: string;
   name: string;
+  sku: string;
+  barcode: string | null;
   retail_price: number;
+  tax_rate: number;
+  stock: number;
   categories?: { name: string };
 };
+
+type ReceiptLine = { name: string; quantity: number; price: number; taxRate: number };
 
 type CartItem = {
   product: Product;
@@ -22,7 +28,7 @@ export default function POSClient({ products }: { products: Product[] }) {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [cashReceived, setCashReceived] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
+  const [checkoutError, setCheckoutError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [completedOrder, setCompletedOrder] = useState<any>(null);
@@ -33,14 +39,21 @@ export default function POSClient({ products }: { products: Product[] }) {
     return acc;
   }, {} as Record<string, number>);
 
+  const query = searchQuery.trim().toLowerCase();
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.categories?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = !query ||
+      p.name.toLowerCase().includes(query) ||
+      p.sku.toLowerCase().includes(query) ||
+      (p.barcode || '').toLowerCase().includes(query) ||
+      (p.categories?.name || '').toLowerCase().includes(query);
     const matchesCategory = selectedCategory === 'All' || (p.categories?.name || 'Uncategorized') === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
+  const inCart = (productId: string) => cart.find((item) => item.product.id === productId)?.quantity || 0;
+
   const addToCart = (product: Product) => {
+    if (inCart(product.id) >= product.stock) return;
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
@@ -52,12 +65,23 @@ export default function POSClient({ products }: { products: Product[] }) {
     });
   };
 
+  // Enter adds an exact barcode/SKU match (what a scanner sends), or the only search result.
+  const addFromSearch = () => {
+    if (!query) return;
+    const exact = products.find(p => p.barcode?.toLowerCase() === query || p.sku.toLowerCase() === query);
+    const match = exact || (filteredProducts.length === 1 ? filteredProducts[0] : null);
+    if (match) {
+      addToCart(match);
+      setSearchQuery('');
+    }
+  };
+
   const updateQuantity = (productId: string, delta: number) => {
     setCart((prev) =>
       prev.map((item) => {
         if (item.product.id === productId) {
           const newQ = item.quantity + delta;
-          return newQ > 0 ? { ...item, quantity: newQ } : item;
+          return newQ > 0 && newQ <= item.product.stock ? { ...item, quantity: newQ } : item;
         }
         return item;
       })
@@ -68,46 +92,45 @@ export default function POSClient({ products }: { products: Product[] }) {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
-  const total = cart.reduce((sum, item) => sum + item.product.retail_price * item.quantity, 0);
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const subtotal = round2(cart.reduce((sum, item) => sum + item.product.retail_price * item.quantity, 0));
+  const tax = round2(cart.reduce((sum, item) => sum + (item.product.retail_price * item.quantity * item.product.tax_rate) / 100, 0));
+  const total = round2(subtotal + tax);
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
     setIsSubmitting(true);
-    setSuccessMsg('');
+    setCheckoutError('');
 
     try {
-      const orderData = {
-        cart: cart.map(c => ({
-          id: c.product.id,
-          name: c.product.name,
-          price: c.product.retail_price,
-          quantity: c.quantity
-        })),
-        total,
-        paymentMethod,
-        cashReceived: paymentMethod === 'cash' && cashReceived ? Number(cashReceived) : undefined,
-        cashChange: paymentMethod === 'cash' && cashReceived ? Math.max(0, Number(cashReceived) - total) : undefined,
-      };
+      const cash = paymentMethod === 'cash' ? Number(cashReceived) : undefined;
+      const res = await createPOSOrder({
+        cart: cart.map(c => ({ id: c.product.id, quantity: c.quantity })),
+        paymentMethod: paymentMethod as 'cash' | 'card',
+        cashReceived: cash,
+      });
 
-      const res = await createPOSOrder(orderData);
-
-      if (res.success) {
-        setCompletedOrder({
-          orderNumber: res.orderNumber,
-          items: orderData.cart,
-          total: orderData.total,
-          paymentMethod: orderData.paymentMethod,
-          cashReceived: orderData.cashReceived,
-          cashChange: orderData.cashChange,
-          date: new Date().toLocaleString()
-        });
-        setCart([]);
-        setIsCheckingOut(false);
-        setCashReceived('');
+      if (!res.success) {
+        setCheckoutError(res.error);
+        return;
       }
+      setCompletedOrder({
+        orderNumber: res.orderNumber,
+        items: res.items,
+        subtotal: res.subtotal,
+        tax: res.tax,
+        total: res.total,
+        paymentMethod,
+        cashReceived: cash,
+        cashChange: cash !== undefined ? cash - res.total : undefined,
+        date: new Date().toLocaleString()
+      });
+      setCart([]);
+      setIsCheckingOut(false);
+      setCashReceived('');
     } catch (err) {
       console.error(err);
-      alert('Failed to process order. Please try again.');
+      setCheckoutError('Failed to process the sale. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -120,14 +143,16 @@ export default function POSClient({ products }: { products: Product[] }) {
     }
 
     setCompletedOrder({
-      orderNumber: 'QUOTE-' + Math.floor(1000 + Math.random() * 9000),
-      items: cart.map((c) => ({
-        id: c.product.id,
+      orderNumber: `QUOTE-${new Date().toISOString().slice(0, 16).replace(/\D/g, '')}`,
+      items: cart.map((c): ReceiptLine => ({
         name: c.product.name,
         price: c.product.retail_price,
         quantity: c.quantity,
+        taxRate: c.product.tax_rate,
       })),
-      total: total,
+      subtotal,
+      tax,
+      total,
       paymentMethod: 'quote',
       date: new Date().toLocaleString(),
     });
@@ -155,6 +180,8 @@ export default function POSClient({ products }: { products: Product[] }) {
                   placeholder="Scan barcode or search SKU/name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addFromSearch()}
+                  autoFocus
                   className="flex-1 h-full bg-transparent px-3 text-[15px] placeholder:text-ink-400 focus:outline-none"
                 />
                 <div className="flex items-center gap-2.5 shrink-0 border-l border-border pl-4">
@@ -195,22 +222,25 @@ export default function POSClient({ products }: { products: Product[] }) {
           <div className="flex-1 overflow-y-auto p-6">
             {filteredProducts.length === 0 ? (
               <div className="bg-white border border-border rounded-xl p-8 text-center text-ink-500 shadow-sm">
-                {searchQuery ? 'No products found matching your search.' : 'No active products found in Supabase.'}
+                {searchQuery ? 'No products found matching your search.' : 'No active products yet. Add products in the catalog first.'}
               </div>
             ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4">
-                {filteredProducts.map((product) => (
+                {filteredProducts.map((product) => {
+                  const left = product.stock - inCart(product.id);
+                  return (
                   <button
                     key={product.id}
                     onClick={() => addToCart(product)}
-                    className="bg-white border border-border rounded-2xl p-3 flex flex-col text-left hover:border-ink-400 hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] transition-all group overflow-hidden active:scale-95"
+                    disabled={left <= 0}
+                    className="bg-white border border-border rounded-2xl p-3 flex flex-col text-left hover:border-ink-400 hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] transition-all group overflow-hidden active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
                   >
                     <div className="w-full aspect-square bg-canvas rounded-xl mb-3 flex items-center justify-center relative overflow-hidden">
                       <svg className="text-ink-200" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
                     </div>
-                    <div className="text-[10px] text-ink-400 mb-1 tracking-wider uppercase font-medium">SKU-{product.id.substring(0, 4)}</div>
+                    <div className="text-[10px] text-ink-400 mb-1 tracking-wider uppercase font-medium truncate">{product.sku}</div>
                     <div className="text-[13px] font-semibold text-ink-900 leading-tight mb-0.5 line-clamp-1">{product.name}</div>
-                    <div className="text-[11px] text-ink-500 line-clamp-1 mb-3">{product.categories?.name || 'Uncategorized'} · Premium</div>
+                    <div className="text-[11px] text-ink-500 line-clamp-1 mb-3">{product.categories?.name || 'Uncategorized'}</div>
 
                     <div className="mt-auto flex flex-col w-full pt-1">
                       <div className="text-[11px] font-bold text-ink-900 mb-0.5">Rs</div>
@@ -218,16 +248,16 @@ export default function POSClient({ products }: { products: Product[] }) {
                         <div className="text-[14px] font-bold num tabular text-ink-900 tracking-tight truncate">
                           {product.retail_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
-                        {/* Mock stock indicator logic */}
-                        {product.id.charCodeAt(0) % 3 === 0 ? (
-                          <div className="text-[9px] font-bold text-[#EA580C] uppercase tracking-wider shrink-0">left</div>
-                        ) : product.id.charCodeAt(0) % 5 === 0 ? (
+                        {left <= 0 ? (
                           <div className="text-[9px] font-bold text-[#DC2626] uppercase tracking-wider shrink-0">Out</div>
+                        ) : left <= 5 ? (
+                          <div className="text-[9px] font-bold text-[#EA580C] uppercase tracking-wider shrink-0 num">{left} left</div>
                         ) : null}
                       </div>
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -251,7 +281,7 @@ export default function POSClient({ products }: { products: Product[] }) {
                 <div key={item.product.id} className="flex gap-3 py-2.5 border-b border-borderMuted last:border-0 group">
                   <div className="flex-1 min-w-0 pr-2">
                     <div className="font-semibold text-[13px] text-ink-900 mb-0.5 leading-snug line-clamp-1">{item.product.name}</div>
-                    <div className="text-ink-400 text-[11px] mb-1">SKU-{item.product.id.substring(0, 4)}</div>
+                    <div className="text-ink-400 text-[11px] mb-1">{item.product.sku}</div>
                     <div className="text-ink-900 font-bold text-[13px] num tabular tracking-tight">{formatMoney(item.product.retail_price)}</div>
                   </div>
                   <div className="flex flex-col items-end justify-between shrink-0">
@@ -279,22 +309,18 @@ export default function POSClient({ products }: { products: Product[] }) {
             <div className="space-y-2.5 mb-6">
               <div className="flex justify-between items-center text-xs text-ink-500 font-medium">
                 <span>Subtotal · {cart.reduce((s, i) => s + i.quantity, 0)} items</span>
-                <span className="num tabular font-bold text-ink-900 tracking-tight">{formatMoney(total).replace('Rs ', '')}</span>
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                <button className="text-[#EA580C] hover:underline font-semibold">Add discount</button>
-                <span className="num tabular font-bold text-ink-900 tracking-tight">0.00</span>
+                <span className="num tabular font-bold text-ink-900 tracking-tight">{formatMoney(subtotal).replace('Rs ', '')}</span>
               </div>
               <div className="flex justify-between items-center text-xs text-ink-500 font-medium">
-                <span>VAT 5%</span>
-                <span className="num tabular font-bold text-ink-900 tracking-tight">{(total * 0.05).toFixed(2)}</span>
+                <span>Tax</span>
+                <span className="num tabular font-bold text-ink-900 tracking-tight">{tax.toFixed(2)}</span>
               </div>
             </div>
 
             <div className="flex justify-between items-end mb-5">
-              <div className="text-[10px] text-ink-500 font-bold uppercase tracking-wider mb-2">Rs · incl. VAT</div>
+              <div className="text-[10px] text-ink-500 font-bold uppercase tracking-wider mb-2">Rs · incl. tax</div>
               <div className="text-[48px] leading-[0.8] font-bold tabular num tracking-tight3 text-ink-900">
-                {formatMoney(total * 1.05).replace('Rs ', '')}
+                {formatMoney(total).replace('Rs ', '')}
               </div>
             </div>
           </div>
@@ -304,7 +330,7 @@ export default function POSClient({ products }: { products: Product[] }) {
             <div className="grid grid-cols-2 gap-2">
               <button
                 disabled={cart.length === 0}
-                onClick={() => { setPaymentMethod('cash'); setIsCheckingOut(true); }}
+                onClick={() => { setPaymentMethod('cash'); setCheckoutError(''); setIsCheckingOut(true); }}
                 className="h-[56px] bg-ink-900 hover:bg-ink-800 text-white rounded-[14px] flex flex-col items-center justify-center relative transition disabled:opacity-50 disabled:cursor-not-allowed group"
               >
                 <div className="flex items-center gap-2 text-[15px] font-semibold mb-0.5 group-active:scale-95 transition-transform">
@@ -315,7 +341,7 @@ export default function POSClient({ products }: { products: Product[] }) {
               </button>
               <button
                 disabled={cart.length === 0}
-                onClick={() => { setPaymentMethod('card'); setIsCheckingOut(true); }}
+                onClick={() => { setPaymentMethod('card'); setCheckoutError(''); setIsCheckingOut(true); }}
                 className="h-[56px] bg-[#EA580C] hover:bg-[#C2410C] text-white rounded-[14px] flex flex-col items-center justify-center relative transition disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_4px_14px_rgba(234,88,12,0.25)] group"
               >
                 <div className="flex items-center gap-2 text-[15px] font-semibold mb-0.5 group-active:scale-95 transition-transform">
@@ -326,11 +352,7 @@ export default function POSClient({ products }: { products: Product[] }) {
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 mt-1">
-              <button className="h-12 bg-white border border-border rounded-xl text-xs font-semibold text-ink-700 flex items-center justify-center gap-1.5 hover:bg-canvas transition shadow-sm active:scale-95">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="4" y="4" width="16" height="16" rx="2" ry="2" /><rect x="9" y="9" width="6" height="6" /></svg>
-                Hold
-              </button>
+            <div className="grid grid-cols-2 gap-2 mt-1">
               <button
                 onClick={handlePrintQuote}
                 disabled={cart.length === 0}
@@ -365,8 +387,8 @@ export default function POSClient({ products }: { products: Product[] }) {
 
             <div className="p-6">
               <div className="text-center mb-8">
-                <div className="text-sm text-ink-500 font-medium mb-1">Amount Due (incl. VAT)</div>
-                <div className="text-4xl font-bold text-brand tabular num tracking-tight2">{formatMoney(total * 1.05)}</div>
+                <div className="text-sm text-ink-500 font-medium mb-1">Amount Due (incl. tax)</div>
+                <div className="text-4xl font-bold text-brand tabular num tracking-tight2">{formatMoney(total)}</div>
               </div>
 
               <div className="space-y-4">
@@ -396,16 +418,19 @@ export default function POSClient({ products }: { products: Product[] }) {
                       id="cash"
                       value={cashReceived}
                       onChange={(e) => setCashReceived(e.target.value)}
-                      placeholder={(total * 1.05).toFixed(2).toString()}
+                      placeholder={total.toFixed(2)}
                       className="w-full h-12 px-4 rounded-lg border border-border bg-canvas text-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition tabular num"
                     />
-                    {Number(cashReceived) >= (total * 1.05) && (
+                    {cashReceived !== '' && Number(cashReceived) >= total && (
                       <div className="mt-3 flex justify-between items-center p-3 bg-goodSoft border border-good/20 rounded-lg text-good">
                         <span className="text-sm font-medium">Change to return:</span>
-                        <span className="font-bold text-lg num tabular">Rs {(Number(cashReceived) - (total * 1.05)).toFixed(2)}</span>
+                        <span className="font-bold text-lg num tabular">Rs {(Number(cashReceived) - total).toFixed(2)}</span>
                       </div>
                     )}
                   </div>
+                )}
+                {checkoutError && (
+                  <div className="p-3 text-sm text-bad bg-badSoft border border-bad/20 rounded-lg">{checkoutError}</div>
                 )}
               </div>
             </div>
@@ -419,7 +444,7 @@ export default function POSClient({ products }: { products: Product[] }) {
               </button>
               <button
                 onClick={handleCheckout}
-                disabled={isSubmitting || (paymentMethod === 'cash' && (cashReceived === '' || Number(cashReceived) < (total * 1.05)))}
+                disabled={isSubmitting || (paymentMethod === 'cash' && (cashReceived === '' || Number(cashReceived) < total))}
                 className={`flex-[2] h-12 text-white rounded-lg font-semibold text-[15px] transition disabled:opacity-50 flex items-center justify-center shadow-sm ${paymentMethod === 'cash' ? 'bg-ink-900 hover:bg-ink-800' : 'bg-[#EA580C] hover:bg-[#C2410C]'}`}
               >
                 {isSubmitting ? 'Processing...' : 'Confirm Order'}
@@ -446,7 +471,7 @@ export default function POSClient({ products }: { products: Product[] }) {
                   <span>Amount</span>
                 </div>
                 <div className="space-y-3">
-                  {completedOrder.items.map((item: any, i: number) => (
+                  {completedOrder.items.map((item: ReceiptLine, i: number) => (
                     <div key={i} className="flex justify-between text-sm">
                       <div className="pr-4">
                         <div className="font-medium text-ink-900">{item.name}</div>
@@ -463,15 +488,17 @@ export default function POSClient({ products }: { products: Product[] }) {
               <div className="space-y-1.5 mb-6 text-sm">
                 <div className="flex justify-between text-ink-600">
                   <span>Subtotal</span>
-                  <span className="tabular num text-ink-900">Rs {completedOrder.total.toFixed(2)}</span>
+                  <span className="tabular num text-ink-900">Rs {completedOrder.subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-sm mb-1 text-ink-500">
-                  <span>VAT (5%)</span>
-                  <span className="tabular num text-ink-900">Rs {(completedOrder.total * 0.05).toFixed(2)}</span>
-                </div>
+                {completedOrder.tax > 0 && (
+                  <div className="flex justify-between text-sm mb-1 text-ink-500">
+                    <span>Tax</span>
+                    <span className="tabular num text-ink-900">Rs {completedOrder.tax.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-lg font-bold mt-3 pt-3 border-t border-ink-200 text-ink-900">
                   <span>Total</span>
-                  <span className="tabular num">Rs {(completedOrder.total * 1.05).toFixed(2)}</span>
+                  <span className="tabular num">Rs {completedOrder.total.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-ink-600 mt-2">
                   <span>Payment Method</span>

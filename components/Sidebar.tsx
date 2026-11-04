@@ -6,7 +6,9 @@ import type { DashboardUser } from "@/lib/auth";
 import { canAccess, ROLE_LABELS } from "@/lib/roles";
 import { initials } from "@/lib/format";
 
-export default function Sidebar({ user }: { user: DashboardUser }) {
+export type SidebarBadges = { openOrders: number; activeDeliveries: number; lowStock: number };
+
+export default function Sidebar({ user, badges }: { user: DashboardUser; badges: SidebarBadges }) {
   const pathname = usePathname();
   const show = (href: string) => canAccess(user.role, href);
 
@@ -37,19 +39,16 @@ export default function Sidebar({ user }: { user: DashboardUser }) {
         <Link href="/orders" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/orders') ? 'active' : ''}`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
           Orders
-          <span className="ml-auto text-2xs num text-ink-400">247</span>
+          {badges.openOrders > 0 && <span className="ml-auto text-2xs num text-ink-400" title="Open orders">{badges.openOrders}</span>}
         </Link>
         <Link href="/pos" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/pos') ? 'active' : ''}`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="4" width="20" height="16" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /><circle cx="7" cy="15" r="1" /></svg>
           Point of Sale
-          <span className="ml-auto flex items-center gap-1">
-            <span className="pulse-dot text-good"><span className="block w-1.5 h-1.5 rounded-full bg-good"></span></span>
-          </span>
         </Link>
         <Link href="/deliveries" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/deliveries') ? 'active' : ''}`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" /><path d="M15 18h-5" /><path d="M17 18h4" /><path d="M17 8h4l1 4v6h-5" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></svg>
           Deliveries
-          <span className="ml-auto text-2xs num text-ink-400">18</span>
+          {badges.activeDeliveries > 0 && <span className="ml-auto text-2xs num text-ink-400" title="Active deliveries">{badges.activeDeliveries}</span>}
         </Link>
 
         <div className="text-2xs text-ink-400 uppercase tracking-wider px-3 py-1.5 mt-3">Catalog</div>
@@ -60,7 +59,7 @@ export default function Sidebar({ user }: { user: DashboardUser }) {
         <Link href="/inventory" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/inventory') ? 'active' : ''}`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22V12" /><path d="m3.29 7 8 4.4a2 2 0 0 0 1.96 0l8-4.4" /><path d="M21 16.5V7.5a2 2 0 0 0-1-1.7l-7-4.09a2 2 0 0 0-2 0L4 5.8a2 2 0 0 0-1 1.7v9a2 2 0 0 0 1 1.7l7 4.09a2 2 0 0 0 2 0l7-4.09a2 2 0 0 0 1-1.7" /></svg>
           Inventory
-          <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded bg-warnSoft text-warn text-2xs num font-medium">3</span>
+          {badges.lowStock > 0 && <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded bg-warnSoft text-warn text-2xs num font-medium" title="Low or out of stock">{badges.lowStock}</span>}
         </Link>
         <Link href="/categories" className={`nav-item flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm mb-0.5 ${pathname.startsWith('/categories') ? 'active' : ''}`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>

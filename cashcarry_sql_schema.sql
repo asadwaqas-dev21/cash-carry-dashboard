@@ -45,6 +45,7 @@ language plpgsql
 as $$
 begin
   new.updated_at = now();
+  return new;
 end;
 $$;
 

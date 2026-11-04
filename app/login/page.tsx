@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
@@ -18,13 +18,11 @@ function callbackUrl(next = nextPath()) {
 type Pending = null | "password" | "google" | "link" | "reset";
 type Method = "password" | "link";
 
-const activityFeed = [
-  { icon: "pos", text: "POS sale · R-4831", amount: "Rs 1,262" },
-  { icon: "app", text: "App order · #4832", amount: "Rs 348" },
-  { icon: "stock", text: "Stock count completed", amount: "" },
-  { icon: "rider", text: "Rider #12 picked up 4 orders", amount: "" },
-  { icon: "pos", text: "POS sale · R-4830", amount: "Rs 6,120" },
-  { icon: "app", text: "App order · #4831", amount: "Rs 2,847" },
+const features = [
+  { icon: "pos", text: "Counter sales with receipts" },
+  { icon: "app", text: "App orders and payments" },
+  { icon: "stock", text: "Stock levels and adjustments" },
+  { icon: "rider", text: "Rider deliveries and cash" },
 ];
 
 function Spinner({ className = "text-white" }: { className?: string }) {
@@ -69,17 +67,6 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(callbackError);
   const [notice, setNotice] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [feed, setFeed] = useState(() => activityFeed.slice(0, 3).map((item, i) => ({ ...item, id: i })));
-
-  useEffect(() => {
-    let index = 3;
-    const interval = setInterval(() => {
-      const item = { ...activityFeed[index % activityFeed.length], id: index };
-      index++;
-      setFeed((prev) => [item, ...prev].slice(0, 3));
-    }, 3500);
-    return () => clearInterval(interval);
-  }, []);
 
   const start = (kind: Pending) => {
     setLoading(kind);
@@ -344,9 +331,6 @@ function LoginForm() {
 
           <div className="relative flex items-center justify-between text-2xs text-ink-400">
             <span>© 2026 Kirana Cash &amp; Carry</span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-good" /> All systems normal
-            </span>
           </div>
         </div>
 
@@ -358,41 +342,20 @@ function LoginForm() {
 
           <div className="relative flex flex-col justify-between w-full p-12">
             <div className="inline-flex self-start items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/10 backdrop-blur text-xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" /> Live store activity
+              <span className="w-1.5 h-1.5 rounded-full bg-brand" /> Store operations dashboard
             </div>
 
             <div className="relative h-[340px] my-8">
-              {/* Sales card */}
-              <div className="float-slow absolute left-0 top-0 w-[290px] p-5 rounded-2xl bg-white/[0.07] border border-white/10 backdrop-blur-xl shadow-2xl">
-                <div className="text-xs text-white/60">Today&apos;s sales</div>
-                <div className="mt-1 text-3xl font-semibold tracking-tight3 num">Rs 248,930</div>
-                <div className="mt-1 text-xs text-emerald-400">↑ 12.4% vs yesterday</div>
-                <svg viewBox="0 0 240 60" className="mt-4 w-full h-14" aria-hidden>
-                  <defs>
-                    <linearGradient id="spark" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#EA580C" stopOpacity="0.5" />
-                      <stop offset="100%" stopColor="#EA580C" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <path d="M0 48 L30 42 L60 45 L90 30 L120 34 L150 20 L180 24 L210 10 L240 14 L240 60 L0 60 Z" fill="url(#spark)" />
-                  <path d="M0 48 L30 42 L60 45 L90 30 L120 34 L150 20 L180 24 L210 10 L240 14" fill="none" stroke="#FB923C" strokeWidth="2" strokeLinejoin="round" />
-                </svg>
-              </div>
-
-              {/* Activity feed */}
-              <div className="float-slower absolute right-0 top-24 w-[300px] p-4 rounded-2xl bg-white text-ink-900 shadow-2xl">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-semibold">Activity</div>
-                  <div className="text-2xs text-ink-400">just now</div>
-                </div>
+              {/* Features card */}
+              <div className="float-slower absolute right-0 top-10 w-[300px] p-4 rounded-2xl bg-white text-ink-900 shadow-2xl">
+                <div className="text-sm font-semibold mb-3">Everything in one place</div>
                 <div className="space-y-2.5">
-                  {feed.map((item) => (
-                    <div key={item.id} className="feed-in flex items-center gap-2.5">
+                  {features.map((item) => (
+                    <div key={item.text} className="flex items-center gap-2.5">
                       <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${item.icon === "app" ? "bg-brand-soft text-brand" : item.icon === "stock" ? "bg-ink-200/50 text-ink-700" : "bg-goodSoft text-good"}`}>
                         <FeedIcon type={item.icon} />
                       </div>
                       <div className="flex-1 min-w-0 text-xs truncate">{item.text}</div>
-                      {item.amount && <div className="text-xs font-medium num">{item.amount}</div>}
                     </div>
                   ))}
                 </div>

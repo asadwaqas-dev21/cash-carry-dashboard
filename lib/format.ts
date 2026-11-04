@@ -66,6 +66,13 @@ export function percent(part: number, total: number) {
   return Math.round((part / total) * 100);
 }
 
+export function orderStatusClass(status: string) {
+  if (['delivered', 'completed', 'paid'].includes(status)) return 'bg-goodSoft text-good';
+  if (['out_for_delivery', 'preparing', 'pending', 'confirmed', 'ready'].includes(status)) return 'bg-warnSoft text-warn';
+  if (['cancelled', 'voided', 'failed', 'refunded', 'returned'].includes(status)) return 'bg-badSoft text-bad';
+  return 'bg-ink-100 text-ink-600';
+}
+
 export function sumBy<T>(items: T[], picker: (item: T) => number | string | null | undefined) {
   return items.reduce((sum, item) => sum + Number(picker(item) || 0), 0);
 }
